@@ -1,0 +1,14 @@
+// settings.gradle — tells Gradle where to download the Fabric "Loom" build plugin
+// from, and what this project is called.
+pluginManagement {
+	repositories {
+		maven {
+			name = 'Fabric'
+			url = 'https://maven.fabricmc.net/'
+		}
+		mavenCentral()
+		gradlePluginPortal()
+	}
+}
+
+rootProject.name = 'lyricmod'

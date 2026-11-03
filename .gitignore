@@ -1,0 +1,14 @@
+# Gradle / Loom build output
+.gradle/
+build/
+out/
+classes/
+# Folder that runClient uses as the game directory (worlds, logs, config...)
+run/
+# IDE files
+.idea/
+*.iml
+*.ipr
+*.iws
+.vscode/
+bin/

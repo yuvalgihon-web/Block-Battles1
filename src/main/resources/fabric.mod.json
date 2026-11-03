@@ -1,0 +1,19 @@
+{
+	"schemaVersion": 1,
+	"id": "lyricmod",
+	"version": "${version}",
+	"name": "Lyric Mod",
+	"description": "Plays a song and shows its lyrics floating around the player, synced to the music.",
+	"authors": ["yuvalgihon-web"],
+	"license": "MIT",
+	"environment": "client",
+	"entrypoints": {
+		"client": ["dev.lyricmod.LyricModClient"]
+	},
+	"depends": {
+		"fabricloader": ">=0.16.0",
+		"minecraft": "~1.21.1",
+		"java": ">=21",
+		"fabric-api": "*"
+	}
+}

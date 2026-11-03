@@ -1,0 +1,3 @@
+# Keep the gradlew script runnable on Linux/macOS even if edited on Windows.
+gradlew text eol=lf
+*.bat text eol=crlf
