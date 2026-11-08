@@ -12,6 +12,7 @@ scattered around you with animations (or as a simple line, if you prefer).
 | `/lyrics play <name>` | Plays `config/lyricmod/<name>.ogg` and shows the lyrics from `<name>.lrc` in sync. Press Tab to see the song names. |
 | `/lyrics style scatter` | (default) Words float around you: each pops in when sung, tilted, at its own distance/height/size; lines slowly orbit and drift up, then float away. |
 | `/lyrics style line` | Each line as a straight row of words in front of you. |
+| `/lyrics offset <ms>` | Timing correction: positive shows lyrics earlier (if they come late, e.g. Bluetooth headphones or Spotify), negative later. `0` = none. |
 | `/lyrics stop` | Stops the song. |
 | `/lyrics list` | Lists the songs in `config/lyricmod`. |
 | `/lyrics spotify` | Shows the lyrics of whatever the Spotify app is playing (lyrics from LRCLIB). See below for the one-time setup. |
@@ -72,7 +73,7 @@ Put two files with the same name in `config/lyricmod/`:
 ```
 
 Word-by-word timing ("enhanced LRC") is used when present. Without it, the words of a line are
-spread evenly over the first 60% of the line:
+spread over the first 60% of the line (at most 4 s), longer words getting more time:
 
 ```
 [00:12.50]<00:12.50>First <00:13.10>line <00:13.40>of <00:13.80>the <00:14.00>song
@@ -118,7 +119,9 @@ To build a `.jar` for your normal Minecraft install: `./gradlew build`, then cop
 | `src/main/java/dev/lyricmod/Lrclib.java` | Downloads synced lyrics from lrclib.net (exact match first, then the search result closest in length) and caches them. |
 | `src/main/java/dev/lyricmod/ScatterAnimation.java` | The scatter style: chooses each word's spot (angle, distance, height, size, tilt) once per line, then animates pop-in, drift, orbit and leaving every frame. |
 | `src/main/java/dev/lyricmod/Easing.java` | Easing curves (`outCubic`, `inCubic`, `inOutSine`, `outBack`) that make motion start and stop smoothly. |
-| `src/main/java/dev/lyricmod/LyricStyle.java` | The available styles (`SCATTER`, `LINE`) and the current one. |
+| `src/main/java/dev/lyricmod/LyricStyle.java` | The available styles (`SCATTER`, `LINE`). |
+| `src/main/java/dev/lyricmod/LyricSettings.java` | The player's current choices: style and timing offset (step 5 will save them). |
+| `src/main/java/dev/lyricmod/PreparedLine.java` | Caches the per-line work (word times, direction, drawable text, widths) so it's done once per line instead of every frame. |
 | `src/main/java/dev/lyricmod/LyricTimeline.java` | Timing math only: which line is sung at a given time, when it ends, and when each of its words starts. |
 | `src/main/java/dev/lyricmod/SyncedLyricsDisplay.java` | Every frame, reads the song's playback time and draws the current line word by word (and the previous line fading out). |
 | `src/main/java/dev/lyricmod/LyricRenderer.java` | Hooks into world rendering every frame. Its `drawText` puts one piece of text in 3D: move to its position, rotate to face the camera, scale down, draw with the right transparency. |

@@ -24,6 +24,7 @@ import net.minecraft.world.phys.Vec3;
  *   /lyrics spotify       show the lyrics of what Spotify is playing (see SpotifyMode)
  *   /lyrics spotify setup <client id> | login | logout
  *   /lyrics style <scatter|line>   how lyrics are shown
+ *   /lyrics offset <ms>            show lyrics earlier (+) or later (-)
  *
  * "Client-side" means the command runs only inside your own game. It is never
  * sent to the server, so it works in singleplayer and on any server, even one
@@ -79,6 +80,11 @@ public final class LyricsCommand {
 												.executes(context -> runStyle(context.getSource(), LyricStyle.SCATTER)))
 										.then(ClientCommands.literal("line")
 												.executes(context -> runStyle(context.getSource(), LyricStyle.LINE))))
+								.then(ClientCommands.literal("offset")
+										.then(ClientCommands.argument("ms",
+														com.mojang.brigadier.arguments.IntegerArgumentType.integer(-5000, 5000))
+												.executes(context -> runOffset(context.getSource(),
+														com.mojang.brigadier.arguments.IntegerArgumentType.getInteger(context, "ms")))))
 								.then(ClientCommands.literal("stop")
 										.executes(context -> runStop(context.getSource())))
 								.then(ClientCommands.literal("list")
@@ -209,8 +215,17 @@ public final class LyricsCommand {
 
 	/** /lyrics style <scatter|line> */
 	private static int runStyle(FabricClientCommandSource source, LyricStyle style) {
-		LyricStyle.current = style;
+		LyricSettings.style = style;
 		source.sendFeedback(Component.literal("Lyric style: " + style.name().toLowerCase()));
+		return 1;
+	}
+
+	/** /lyrics offset <ms> */
+	private static int runOffset(FabricClientCommandSource source, int ms) {
+		LyricSettings.offsetMs = ms;
+		String meaning = ms == 0 ? "no correction"
+				: ms > 0 ? "lyrics " + ms + " ms earlier" : "lyrics " + (-ms) + " ms later";
+		source.sendFeedback(Component.literal("Lyrics offset: " + ms + " ms (" + meaning + ")"));
 		return 1;
 	}
 

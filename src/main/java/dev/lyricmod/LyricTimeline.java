@@ -22,6 +22,9 @@ public final class LyricTimeline {
 	 */
 	private static final double EVEN_SPREAD_SHARE = 0.6;
 
+	/** Extra "letters" every word counts for when sharing out time between words. */
+	private static final double WORD_BASE_WEIGHT = 2;
+
 	/** Never spread words over more than this many ms (for very long gaps). */
 	private static final long MAX_SPREAD_MS = 4000;
 
@@ -30,6 +33,17 @@ public final class LyricTimeline {
 	}
 
 	private LyricTimeline() {
+	}
+
+	/** Counts letters and digits, ignoring punctuation like , ! ? */
+	private static int letters(String word) {
+		int count = 0;
+		for (int i = 0; i < word.length(); i++) {
+			if (Character.isLetterOrDigit(word.charAt(i))) {
+				count++;
+			}
+		}
+		return count;
 	}
 
 	/**
@@ -62,8 +76,8 @@ public final class LyricTimeline {
 	 * The words of line {@code index}, each with its start time.
 	 *
 	 * If the .lrc file had per-word times we use those. Otherwise we split the
-	 * text at spaces and spread the words evenly, which still looks like
-	 * "word by word" singing.
+	 * text at spaces and spread the words over the line, giving longer words
+	 * more time (a long word takes longer to sing than "a" or "I").
 	 */
 	public static List<TimedWord> words(Lyrics lyrics, int index) {
 		Lyrics.Line line = lyrics.lines().get(index);
@@ -79,9 +93,20 @@ public final class LyricTimeline {
 		String[] parts = line.text().isBlank() ? new String[0] : line.text().split(" ");
 		long duration = lineEndMs(lyrics, index) - line.timeMs();
 		long spread = Math.min((long) (duration * EVEN_SPREAD_SHARE), MAX_SPREAD_MS);
+
+		// Each word's "weight" = its letters plus a little extra (even short words
+		// take some time). A word starts after the weights of the words before it.
+		double[] weights = new double[parts.length];
+		double total = 0;
 		for (int i = 0; i < parts.length; i++) {
-			long start = line.timeMs() + spread * i / parts.length;
+			weights[i] = letters(parts[i]) + WORD_BASE_WEIGHT;
+			total += weights[i];
+		}
+		double before = 0;
+		for (int i = 0; i < parts.length; i++) {
+			long start = line.timeMs() + Math.round(spread * before / total);
 			result.add(new TimedWord(parts[i], start));
+			before += weights[i];
 		}
 		return result;
 	}

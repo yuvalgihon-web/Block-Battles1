@@ -74,10 +74,13 @@ public final class LyricRenderer {
 	private static void render(LevelRenderContext context) {
 		// 1. Synced lyrics of the playing song (nothing happens if no song plays).
 		//    The song comes either from Spotify or from a local .ogg file.
+		//    The offset setting shifts the lyrics earlier (+) or later (-).
 		if (SpotifyMode.isActive()) {
-			SyncedLyricsDisplay.render(context, SpotifyMode.currentLyrics(), SpotifyMode.positionMs());
+			SyncedLyricsDisplay.render(context, SpotifyMode.currentLyrics(),
+					SpotifyMode.positionMs() + LyricSettings.offsetMs);
 		} else {
-			SyncedLyricsDisplay.render(context, SongPlayer.currentLyrics(), SongPlayer.positionMs());
+			SyncedLyricsDisplay.render(context, SongPlayer.currentLyrics(),
+					SongPlayer.positionMs() + LyricSettings.offsetMs);
 		}
 
 		// 2. Simple floating lines.
@@ -95,6 +98,23 @@ public final class LyricRenderer {
 	/** Width of a piece of text, in font pixels. */
 	static float textWidth(String text) {
 		return Minecraft.getInstance().font.width(text);
+	}
+
+	/** Width of already-prepared text, in font pixels. */
+	static float textWidth(FormattedCharSequence chars) {
+		return Minecraft.getInstance().font.width(chars);
+	}
+
+	/**
+	 * Turns text into "visual order": the characters in the order they appear
+	 * on screen (for Hebrew, right-to-left). Minecraft's FormattedBidiReorder
+	 * does the work. The result can be drawn many times.
+	 *
+	 * @param rightToLeft true if the text belongs to a right-to-left line, so
+	 *                    punctuation like "," ends up on the correct side
+	 */
+	static FormattedCharSequence prepare(String text, boolean rightToLeft) {
+		return FormattedBidiReorder.reorder(Component.literal(text), rightToLeft);
 	}
 
 	/**
@@ -121,6 +141,12 @@ public final class LyricRenderer {
 	 */
 	static void drawText(LevelRenderContext context, Vec3 position, String text, float xOffset, float opacity,
 			boolean rightToLeft, float scale, float tiltDegrees) {
+		drawText(context, position, prepare(text, rightToLeft), xOffset, opacity, scale, tiltDegrees);
+	}
+
+	/** Same as above, for text already prepared with {@link #prepare} (faster when drawn every frame). */
+	static void drawText(LevelRenderContext context, Vec3 position, FormattedCharSequence chars, float xOffset,
+			float opacity, float scale, float tiltDegrees) {
 		// Very low alpha values can be treated as "fully opaque" by the
 		// text renderer (an old Minecraft quirk), so skip nearly-invisible
 		// frames instead of having the text flash at full brightness.
@@ -157,9 +183,6 @@ public final class LyricRenderer {
 
 		// 4. Submit the text, centered on xOffset: shift left by half its width
 		//    and up by half its height (both in font pixels).
-		// "Visual order" = the characters in the order they appear on screen
-		// (for Hebrew, right-to-left). Minecraft's FormattedBidiReorder does that.
-		FormattedCharSequence chars = FormattedBidiReorder.reorder(Component.literal(text), rightToLeft);
 		float x = xOffset - font.width(chars) / 2f;
 		float y = -font.lineHeight / 2f;
 		context.submitNodeCollector().submitText(

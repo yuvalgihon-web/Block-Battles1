@@ -120,7 +120,8 @@ public class LyricTestCommandGameTest implements FabricClientGameTest {
 
 	/** Step 3: the timing math, without the game. */
 	private void testTimeline() {
-		// Lines WITHOUT word times: words are spread over 60% of the line.
+		// Lines WITHOUT word times: words are spread over 60% of the line,
+		// longer words get more time (weight = letters + 2).
 		Lyrics plain = LrcParser.parse("[00:01.00]one two three four\n[00:05.00]next line\n", "plain");
 		check(LyricTimeline.lineAt(plain, 500) == -1, "before first line");
 		check(LyricTimeline.lineAt(plain, 1000) == 0, "first line starts at 1s");
@@ -128,8 +129,9 @@ public class LyricTestCommandGameTest implements FabricClientGameTest {
 		check(LyricTimeline.lineAt(plain, 5000) == 1, "second line at 5s");
 		List<LyricTimeline.TimedWord> words = LyricTimeline.words(plain, 0);
 		check(words.size() == 4, "4 words");
-		check(words.get(0).startMs() == 1000 && words.get(1).startMs() == 1600
-				&& words.get(3).startMs() == 2800, "evenly spread words: " + words);
+		// one(3+2) two(3+2) three(5+2) four(4+2) = 23 parts of 2400 ms
+		check(words.get(0).startMs() == 1000 && words.get(1).startMs() == 1522
+				&& words.get(2).startMs() == 2043 && words.get(3).startMs() == 2774, "weighted words: " + words);
 		check(LyricTimeline.lineEndMs(plain, 1) == 10000, "last line lasts 5s");
 
 		// Lines WITH word times use them as they are.
@@ -294,6 +296,10 @@ public class LyricTestCommandGameTest implements FabricClientGameTest {
 		check(Easing.outCubic(0.5f) > 0.5f && Easing.inCubic(0.5f) < 0.5f, "out is fast first, in is slow first");
 		check(Easing.outCubic(2f) == 1f && Easing.outCubic(-1f) == 0f, "clamped");
 
+		command(context, "lyrics offset 300");
+		check(dev.lyricmod.LyricSettings.offsetMs == 300, "offset set");
+		command(context, "lyrics offset 0");
+
 		command(context, "lyrics style scatter");
 		command(context, "lyrics play example");
 		context.waitFor(client -> SongPlayer.isPlaying(), 100);
@@ -307,6 +313,11 @@ public class LyricTestCommandGameTest implements FabricClientGameTest {
 		context.waitTicks(2);
 		context.takeScreenshot("step4-turned-right");
 		context.runOnClient(client -> client.player.setYRot(0));
+		// Walk forward for a moment: the words must come along (screenshot while moving).
+		context.getInput().holdKey(options -> options.keyUp);
+		context.waitTicks(10);
+		context.takeScreenshot("step4-walking");
+		context.getInput().releaseKey(options -> options.keyUp);
 		waitForSongTime(context, 8600);
 		context.takeScreenshot("step4-8.6s-second-line");
 		command(context, "lyrics stop");

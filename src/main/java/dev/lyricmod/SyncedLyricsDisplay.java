@@ -52,7 +52,7 @@ public final class SyncedLyricsDisplay {
 
 	/** Called by LyricRenderer every frame. */
 	static void render(LevelRenderContext context, Lyrics lyrics, long positionMs) {
-		if (LyricStyle.current == LyricStyle.SCATTER) {
+		if (LyricSettings.style == LyricStyle.SCATTER) {
 			ScatterAnimation.render(context, lyrics, positionMs);
 			shownLyrics = null; // so the LINE style starts fresh if you switch back
 			return;
@@ -100,35 +100,31 @@ public final class SyncedLyricsDisplay {
 	/** Draws one line word by word. {@code lineOpacity} fades the whole line (1 = fully visible). */
 	private static void drawLine(LevelRenderContext context, Lyrics lyrics, int index, Vec3 anchor,
 			long positionMs, float lineOpacity) {
-		List<LyricTimeline.TimedWord> words = LyricTimeline.words(lyrics, index);
+		// Words, direction and drawable text are worked out once per line (see PreparedLine).
+		PreparedLine prepared = PreparedLine.get(lyrics, index);
+		List<LyricTimeline.TimedWord> words = prepared.words;
 		if (words.isEmpty() || lineOpacity <= 0) {
 			return; // an empty line is a pause in the singing
 		}
-
-		// Right-to-left lines (Hebrew, Arabic): the first word goes on the RIGHT.
-		// BidiText tells us in which order to place the words from left to right.
-		List<String> texts = words.stream().map(LyricTimeline.TimedWord::text).toList();
-		boolean rightToLeft = BidiText.isRightToLeft(String.join(" ", texts));
-		int[] leftToRight = BidiText.visualWordOrder(texts, rightToLeft);
 
 		// Measure the whole line first so we can center it. Words that haven't
 		// been sung yet still take up their space, so the line doesn't jump around.
 		float spaceWidth = LyricRenderer.textWidth(" ");
 		float totalWidth = -spaceWidth;
-		for (LyricTimeline.TimedWord word : words) {
-			totalWidth += LyricRenderer.textWidth(word.text()) + spaceWidth;
+		for (float width : prepared.widths) {
+			totalWidth += width + spaceWidth;
 		}
 
+		// Right-to-left lines (Hebrew, Arabic): leftToRight puts the first word on the RIGHT.
 		float x = -totalWidth / 2f;
-		for (int wordIndex : leftToRight) {
-			LyricTimeline.TimedWord word = words.get(wordIndex);
-			float wordWidth = LyricRenderer.textWidth(word.text());
-			long sinceStart = positionMs - word.startMs();
+		for (int wordIndex : prepared.leftToRight) {
+			float wordWidth = prepared.widths[wordIndex];
+			long sinceStart = positionMs - words.get(wordIndex).startMs();
 			if (sinceStart >= 0) {
 				float wordOpacity = Math.min(1f, (float) sinceStart / WORD_FADE_IN_MS);
 				// drawText centers on x, so pass the middle of the word.
-				LyricRenderer.drawText(context, anchor, word.text(), x + wordWidth / 2f,
-						wordOpacity * lineOpacity, rightToLeft);
+				LyricRenderer.drawText(context, anchor, prepared.drawable[wordIndex], x + wordWidth / 2f,
+						wordOpacity * lineOpacity, 1f, 0f);
 			}
 			x += wordWidth + spaceWidth;
 		}

@@ -105,17 +105,19 @@ public final class ScatterAnimation {
 
 	private static void drawLine(LevelRenderContext context, Lyrics lyrics, int line, long positionMs,
 			LocalPlayer player) {
-		List<LyricTimeline.TimedWord> words = LyricTimeline.words(lyrics, line);
 		long lineStart = lyrics.lines().get(line).timeMs();
 		long lineEnd = LyricTimeline.lineEndMs(lyrics, line);
-		if (words.isEmpty() || positionMs > lineEnd + LEAVE_MS) {
+		if (positionMs > lineEnd + LEAVE_MS) {
 			return;
 		}
-
-		List<String> texts = words.stream().map(LyricTimeline.TimedWord::text).toList();
-		boolean rightToLeft = BidiText.isRightToLeft(String.join(" ", texts));
+		// Words, direction and drawable text are worked out once per line (see PreparedLine).
+		PreparedLine prepared = PreparedLine.get(lyrics, line);
+		List<LyricTimeline.TimedWord> words = prepared.words;
+		if (words.isEmpty()) {
+			return;
+		}
 		LineLayout layout = layouts.computeIfAbsent(line,
-				index -> createLayout(lyrics, index, texts, rightToLeft, player.getYRot()));
+				index -> createLayout(lyrics, index, prepared, player.getYRot()));
 
 		// Leaving: 0 while the line is sung, rising to 1 during LEAVE_MS after it ends.
 		float leave = Easing.inCubic((float) (positionMs - lineEnd) / LEAVE_MS);
@@ -132,7 +134,12 @@ public final class ScatterAnimation {
 			}
 		}
 
-		Vec3 eyes = player.getEyePosition();
+		// The player's eyes EXACTLY where the camera shows them in this frame.
+		// (getEyePosition() without the "partial tick" only changes 20 times per
+		// second, which made the words stutter while walking.)
+		float partialTick = context.levelState().cameraRenderState.cameraEntityPartialTicks;
+		Vec3 eyes = player.getEyePosition(partialTick);
+
 		for (int i = 0; i < words.size(); i++) {
 			long age = positionMs - words.get(i).startMs();
 			if (age < 0) {
@@ -158,8 +165,7 @@ public final class ScatterAnimation {
 					height,
 					Math.cos(angle) * spot.distance());
 
-			LyricRenderer.drawText(context, position, texts.get(i), 0, opacity, rightToLeft,
-					scale, spot.tilt());
+			LyricRenderer.drawText(context, position, prepared.drawable[i], 0, opacity, scale, spot.tilt());
 		}
 	}
 
@@ -167,14 +173,13 @@ public final class ScatterAnimation {
 	 * Chooses a spot for every word of a line. The random numbers come from a
 	 * fixed "seed" per line, so the same song always gets the same layout.
 	 */
-	private static LineLayout createLayout(Lyrics lyrics, int line, List<String> texts, boolean rightToLeft,
-			float playerYaw) {
+	private static LineLayout createLayout(Lyrics lyrics, int line, PreparedLine prepared, float playerYaw) {
 		Random random = new Random(lyrics.title().hashCode() * 31L + line);
-		int count = texts.size();
+		int count = prepared.words.size();
 		float arc = Math.clamp(count * ARC_PER_WORD, MIN_ARC, MAX_ARC);
 
 		// Reading order on screen: left to right (Hebrew lines: the first word on the right).
-		int[] leftToRight = BidiText.visualWordOrder(texts, rightToLeft);
+		int[] leftToRight = prepared.leftToRight;
 		float[] angleOffsets = new float[count];
 		for (int visual = 0; visual < count; visual++) {
 			float t = count == 1 ? 0.5f : (float) visual / (count - 1);
