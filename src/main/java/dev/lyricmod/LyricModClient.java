@@ -26,6 +26,7 @@ public class LyricModClient implements ClientModInitializer {
 	@Override
 	public void onInitializeClient() {
 		LyricFiles.createFolderIfMissing();
+		SpotifyAuth.load();
 		LyricsCommand.register();
 		LyricRenderer.register();
 		LyricRecorder.registerKey();
@@ -34,14 +35,20 @@ public class LyricModClient implements ClientModInitializer {
 		// (The recorder runs first, so it notices the song's end before SongPlayer cleans up.)
 		ClientTickEvents.END_CLIENT_TICK.register(LyricRecorder::tick);
 		ClientTickEvents.END_CLIENT_TICK.register(SongPlayer::tick);
+		ClientTickEvents.END_CLIENT_TICK.register(SpotifyMode::tick);
 
 		// Stop the music when leaving a world or server, and when the game closes.
 		// (execute = "do it on the game thread", where the audio code must run.)
 		ClientPlayConnectionEvents.DISCONNECT.register((handler, client) -> client.execute(() -> {
 			LyricRecorder.cancel();
 			SongPlayer.stop();
+			SpotifyMode.stop();
 		}));
-		ClientLifecycleEvents.CLIENT_STOPPING.register(client -> SongPlayer.stop());
+		ClientLifecycleEvents.CLIENT_STOPPING.register(client -> {
+			SongPlayer.stop();
+			SpotifyMode.stop();
+			SpotifyAuth.cancelLogin();
+		});
 
 		LOGGER.info("Lyric Mod loaded. Songs folder: {}", LyricFiles.folder());
 	}

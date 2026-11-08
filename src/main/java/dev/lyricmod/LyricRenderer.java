@@ -72,7 +72,12 @@ public final class LyricRenderer {
 
 	private static void render(LevelRenderContext context) {
 		// 1. Synced lyrics of the playing song (nothing happens if no song plays).
-		SyncedLyricsDisplay.render(context, SongPlayer.currentLyrics(), SongPlayer.positionMs());
+		//    The song comes either from Spotify or from a local .ogg file.
+		if (SpotifyMode.isActive()) {
+			SyncedLyricsDisplay.render(context, SpotifyMode.currentLyrics(), SpotifyMode.positionMs());
+		} else {
+			SyncedLyricsDisplay.render(context, SongPlayer.currentLyrics(), SongPlayer.positionMs());
+		}
 
 		// 2. Simple floating lines.
 		if (ACTIVE.isEmpty()) {

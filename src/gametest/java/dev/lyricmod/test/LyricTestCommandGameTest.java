@@ -8,6 +8,9 @@ import com.mojang.blaze3d.platform.InputConstants;
 import dev.lyricmod.BidiText;
 import dev.lyricmod.LrcParser;
 import dev.lyricmod.LyricRecorder;
+import dev.lyricmod.Lrclib;
+import dev.lyricmod.SpotifyAuth;
+import dev.lyricmod.SpotifyMode;
 import dev.lyricmod.LyricFiles;
 import dev.lyricmod.LyricTimeline;
 import dev.lyricmod.Lyrics;
@@ -43,6 +46,7 @@ public class LyricTestCommandGameTest implements FabricClientGameTest {
 			testSyncedLyrics(context);
 			testRecorder(context);
 			testHebrew(context);
+			testSpotifyParts(context);
 		}
 	}
 
@@ -224,6 +228,56 @@ public class LyricTestCommandGameTest implements FabricClientGameTest {
 		waitForSongTime(context, 8000);
 		context.takeScreenshot("hebrew-8s-mixed-line");
 		command(context, "lyrics stop");
+	}
+
+	/** Spotify mode, the parts that don't need a real Spotify account. */
+	private void testSpotifyParts(ClientGameTestContext context) {
+		// 1. Reading Spotify's "currently playing" answer (shape as documented by Spotify).
+		SpotifyMode.NowPlaying info = SpotifyMode.parseNowPlaying("""
+				{"timestamp":1,"progress_ms":42500,"is_playing":true,"currently_playing_type":"track",
+				 "item":{"id":"4u7EnebtmKWzUH433cf5Qv","name":"Bohemian Rhapsody","duration_ms":354320,
+				   "artists":[{"name":"Queen"},{"name":"Someone Else"}],
+				   "album":{"name":"A Night At The Opera"}}}""");
+		check(info != null && info.isPlaying() && info.progressMs() == 42500, "parsed: " + info);
+		check(info.track().artist().equals("Queen") && info.track().durationMs() == 354320, "track: " + info.track());
+		check(SpotifyMode.parseNowPlaying("""
+				{"is_playing":true,"currently_playing_type":"episode","item":null}""") == null, "podcast ignored");
+
+		// 2. Real download from LRCLIB (needs internet), and the cache file.
+		Lrclib.Track track = info.track();
+		String lrc = Lrclib.findLyrics(track).join();
+		check(lrc != null, "LRCLIB should have synced lyrics for Bohemian Rhapsody");
+		Lyrics parsed = LrcParser.parse(lrc, "x");
+		check(parsed.lines().size() > 20, "LRCLIB lyrics lines: " + parsed.lines().size());
+		check(Files.isRegularFile(Lrclib.cacheFile(track.spotifyId())), "lyrics should be cached");
+		check(Lrclib.cacheFile("../../evil") == null, "bad track id must not become a file name");
+
+		// 3. The login web server refuses a callback with the wrong "state".
+		check(SpotifyAuth.setClientId("0123456789abcdef0123456789abcdef"), "client id accepted");
+		check(!SpotifyAuth.setClientId("not a client id"), "bad client id refused");
+		java.util.concurrent.CompletableFuture<String> result = new java.util.concurrent.CompletableFuture<>();
+		try {
+			java.net.URI login = SpotifyAuth.startLogin(result::complete);
+			check(login.toString().startsWith("https://accounts.spotify.com/authorize?"), "login url: " + login);
+			check(login.toString().contains("code_challenge_method=S256"), "uses PKCE");
+			java.net.http.HttpResponse<String> page = java.net.http.HttpClient.newBuilder()
+					.proxy(java.net.http.HttpClient.Builder.NO_PROXY).build()
+					.send(java.net.http.HttpRequest.newBuilder(
+							java.net.URI.create(SpotifyAuth.REDIRECT_URI + "?code=abc&state=wrong")).build(),
+							java.net.http.HttpResponse.BodyHandlers.ofString());
+			check(page.statusCode() == 200, "callback page answered");
+		} catch (Exception e) {
+			throw new AssertionError(e);
+		}
+		String error = result.orTimeout(10, java.util.concurrent.TimeUnit.SECONDS).join();
+		check(error != null && error.contains("unexpected answer"), "wrong state refused: " + error);
+
+		// 4. /lyrics spotify without login explains what to do (screenshot).
+		SpotifyAuth.logout();
+		command(context, "lyrics spotify");
+		command(context, "lyrics spotify login");
+		context.waitTicks(2);
+		context.takeScreenshot("spotify-login-link");
 	}
 
 	private static void waitForSongTime(ClientGameTestContext context, long ms) {

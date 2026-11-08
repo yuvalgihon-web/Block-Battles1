@@ -21,6 +21,8 @@ import net.minecraft.world.phys.Vec3;
  *   /lyrics stop          stop the current song
  *   /lyrics list          list the songs in config/lyricmod
  *   /lyrics record <name> make <name>.lrc by pressing a key at each line (see LyricRecorder)
+ *   /lyrics spotify       show the lyrics of what Spotify is playing (see SpotifyMode)
+ *   /lyrics spotify setup <client id> | login | logout
  *
  * "Client-side" means the command runs only inside your own game. It is never
  * sent to the server, so it works in singleplayer and on any server, even one
@@ -61,6 +63,16 @@ public final class LyricsCommand {
 														SharedSuggestionProvider.suggest(LyricFiles.listRecordable(), builder))
 												.executes(context -> runRecord(context.getSource(),
 														StringArgumentType.getString(context, "name")))))
+								.then(ClientCommands.literal("spotify")
+										.executes(context -> runSpotify(context.getSource()))
+										.then(ClientCommands.literal("setup")
+												.then(ClientCommands.argument("clientId", StringArgumentType.word())
+														.executes(context -> runSpotifySetup(context.getSource(),
+																StringArgumentType.getString(context, "clientId")))))
+										.then(ClientCommands.literal("login")
+												.executes(context -> runSpotifyLogin(context.getSource())))
+										.then(ClientCommands.literal("logout")
+												.executes(context -> runSpotifyLogout(context.getSource()))))
 								.then(ClientCommands.literal("stop")
 										.executes(context -> runStop(context.getSource())))
 								.then(ClientCommands.literal("list")
@@ -95,6 +107,7 @@ public final class LyricsCommand {
 		}
 
 		LyricRecorder.cancel(); // playing a song stops any recording
+		SpotifyMode.stop();     // ...and following Spotify
 		source.sendFeedback(Component.literal("Loading " + name + "..."));
 		SongPlayer.play(oggFile, lyrics,
 				() -> {
@@ -121,8 +134,80 @@ public final class LyricsCommand {
 		return 1;
 	}
 
+	/** /lyrics spotify — start following Spotify. */
+	private static int runSpotify(FabricClientCommandSource source) {
+		if (!SpotifyAuth.hasClientId()) {
+			source.sendError(Component.literal("First connect Spotify once:"));
+			source.sendFeedback(Component.literal(
+					"1. Open developer.spotify.com/dashboard, log in, and click \"Create app\"."));
+			source.sendFeedback(Component.literal(
+					"2. Add this Redirect URI: " + SpotifyAuth.REDIRECT_URI + " and tick \"Web API\"."));
+			source.sendFeedback(Component.literal(
+					"3. Copy the app's Client ID and type: /lyrics spotify setup <Client ID>"));
+			return 0;
+		}
+		if (!SpotifyAuth.isLoggedIn()) {
+			source.sendError(Component.literal("Not logged in to Spotify yet. Type: /lyrics spotify login"));
+			return 0;
+		}
+		SpotifyMode.start();
+		source.sendFeedback(Component.literal(
+				"Following Spotify. Play a song in the Spotify app! (/lyrics stop to stop)"));
+		return 1;
+	}
+
+	/** /lyrics spotify setup <client id> */
+	private static int runSpotifySetup(FabricClientCommandSource source, String clientId) {
+		if (!SpotifyAuth.setClientId(clientId.strip())) {
+			source.sendError(Component.literal("That doesn't look like a Client ID (it has 32 letters and digits)."));
+			return 0;
+		}
+		source.sendFeedback(Component.literal("Client ID saved. Now type: /lyrics spotify login"));
+		return 1;
+	}
+
+	/** /lyrics spotify login — shows a link that opens Spotify's login page. */
+	private static int runSpotifyLogin(FabricClientCommandSource source) {
+		if (!SpotifyAuth.hasClientId()) {
+			return runSpotify(source); // prints the setup steps
+		}
+		java.net.URI loginPage;
+		try {
+			loginPage = SpotifyAuth.startLogin(error -> source.getClient().execute(() -> {
+				if (error == null) {
+					source.sendFeedback(Component.literal("Connected to Spotify! Type /lyrics spotify to start."));
+				} else {
+					source.sendError(Component.literal(error));
+				}
+			}));
+		} catch (IOException e) {
+			source.sendError(Component.literal("Could not start the login (is port 18742 in use?): " + e.getMessage()));
+			return 0;
+		}
+		// A clickable link: Minecraft asks "open this link?" and then opens your browser.
+		source.sendFeedback(Component.literal("▶ Click here to log in to Spotify").withStyle(style -> style
+				.withColor(net.minecraft.ChatFormatting.GREEN)
+				.withUnderlined(true)
+				.withClickEvent(new net.minecraft.network.chat.ClickEvent.OpenUrl(loginPage))));
+		source.sendFeedback(Component.literal("(Allow access in the browser, then come back here.)"));
+		return 1;
+	}
+
+	/** /lyrics spotify logout */
+	private static int runSpotifyLogout(FabricClientCommandSource source) {
+		SpotifyMode.stop();
+		SpotifyAuth.logout();
+		source.sendFeedback(Component.literal("Logged out of Spotify."));
+		return 1;
+	}
+
 	/** /lyrics stop */
 	private static int runStop(FabricClientCommandSource source) {
+		if (SpotifyMode.isActive()) {
+			SpotifyMode.stop();
+			source.sendFeedback(Component.literal("Stopped following Spotify."));
+			return 1;
+		}
 		if (LyricRecorder.isRecording()) {
 			LyricRecorder.cancel();
 			SongPlayer.stop();

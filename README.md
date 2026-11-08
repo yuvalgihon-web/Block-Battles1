@@ -11,6 +11,7 @@ world around you, synced to the music.
 | `/lyrics play <name>` | Plays `config/lyricmod/<name>.ogg` and shows the lyrics from `<name>.lrc` in sync. Press Tab to see the song names. |
 | `/lyrics stop` | Stops the song. |
 | `/lyrics list` | Lists the songs in `config/lyricmod`. |
+| `/lyrics spotify` | Shows the lyrics of whatever the Spotify app is playing (lyrics from LRCLIB). See below for the one-time setup. |
 | `/lyrics record <name>` | Makes `<name>.lrc` from `<name>.ogg` + `<name>.txt` by pressing **K** when each line starts (see below). |
 
 The first time the game starts with the mod, it creates `.minecraft/config/lyricmod/` with a
@@ -18,6 +19,28 @@ The first time the game starts with the mod, it creates `.minecraft/config/lyric
 The song's volume follows the **Jukebox/Note Blocks** slider in Music & Sounds.
 Each lyric line appears in front of you when it starts and stays at that spot; its words fade in
 one by one as they're sung, and the previous line fades out.
+
+### Spotify mode
+
+The music plays in the Spotify app as usual; the mod asks Spotify about once a second which song is
+playing and how far in, downloads synced lyrics for it from [LRCLIB](https://lrclib.net), and shows
+them in sync. **This is the only part of the mod that uses the internet** (it talks only to
+Spotify and lrclib.net). It needs a one-time setup:
+
+1. Go to <https://developer.spotify.com/dashboard>, log in with your Spotify account and click **Create app**.
+   Any name and description are fine. Under **Redirect URIs** add exactly `http://127.0.0.1:18742/callback`,
+   and under the APIs tick **Web API**. Save.
+2. Open the app's settings and copy its **Client ID**.
+3. In Minecraft: `/lyrics spotify setup <Client ID>`, then `/lyrics spotify login`, click the green link
+   and allow access in the browser.
+4. Play a song in Spotify and type `/lyrics spotify`. `/lyrics stop` stops following Spotify.
+
+The mod only asks for permission to *read* what is playing. Your login is saved in
+`config/lyricmod/spotify.json`: don't share that file. `/lyrics spotify logout` forgets it.
+Downloaded lyrics are saved in `config/lyricmod/lrclib-cache/` (one `.lrc` per song, named after the
+Spotify track ID); if a song has no lyrics on LRCLIB, or the timing is off, you can put or fix the
+`.lrc` file there. Because the position comes from Spotify over the internet, sync can be ~0.1–0.3 s
+less exact than with local `.ogg` files.
 
 ### No .lrc file? Record one in game
 
@@ -86,15 +109,18 @@ To build a `.jar` for your normal Minecraft install: `./gradlew build`, then cop
 | `src/main/java/dev/lyricmod/LyricRecorder.java` | The `/lyrics record` tool: plays the song, records the song time at each **K** press, shows a live preview and writes the `.lrc` file. |
 | `src/main/resources/assets/lyricmod/lang/en_us.json` | The English name of the "Mark lyric line" key shown in the Controls menu. |
 | `src/main/java/dev/lyricmod/BidiText.java` | Right-to-left support (Hebrew, Arabic): decides the left-to-right drawing order of a line's words, so the first Hebrew word appears on the right. |
+| `src/main/java/dev/lyricmod/SpotifyAuth.java` | Spotify login (Authorization Code with PKCE): a temporary local web server on `127.0.0.1:18742` receives the login, tokens are kept in `config/lyricmod/spotify.json` and refreshed automatically. |
+| `src/main/java/dev/lyricmod/SpotifyMode.java` | Asks Spotify what is playing about once a second, keeps counting the song time in between, and fetches lyrics when the song changes. |
+| `src/main/java/dev/lyricmod/Lrclib.java` | Downloads synced lyrics from lrclib.net (exact match first, then the search result closest in length) and caches them. |
 | `src/main/java/dev/lyricmod/LyricTimeline.java` | Timing math only: which line is sung at a given time, when it ends, and when each of its words starts. |
 | `src/main/java/dev/lyricmod/SyncedLyricsDisplay.java` | Every frame, reads the song's playback time and draws the current line word by word (and the previous line fading out). |
 | `src/main/java/dev/lyricmod/LyricRenderer.java` | Hooks into world rendering every frame. Its `drawText` puts one piece of text in 3D: move to its position, rotate to face the camera, scale down, draw with the right transparency. |
 
 ## Design notes (for later steps)
 
-- **Client-only, offline:** no networking code at all. `environment: client` means the mod never loads on a server.
+- **Client-only:** `environment: client` means the mod never loads on a server. Only the optional Spotify mode uses the internet (api.spotify.com, accounts.spotify.com, lrclib.net).
 - **Step 2 (files):** done. Only `config/lyricmod/` is read; names with `/`, `\` or `..` and symbolic links are refused.
 - **Step 3 (sync):** done. Everything is computed from `SongPlayer.positionMs()` (the audio device's own playback time), so lyrics stay in sync through lag and pauses.
-- **Spotify mode (planned, after step 3):** Spotify plays the music; the mod reads the song and position from Spotify and downloads synced lyrics from LRCLIB. Only `LyricTimeline`/`SyncedLyricsDisplay` need a different time source.
+- **Spotify mode:** done. `LyricRenderer` takes lyrics and time from `SpotifyMode` instead of `SongPlayer`; everything else is shared.
 - **Step 4 (animation):** `SyncedLyricsDisplay` will place words around the player (scatter, drift, orbit, tilt, scale) with easing curves instead of one straight line.
 - **Step 5 (config):** the constants at the top of `LyricRenderer` (`TEXT_SCALE`, `TEXT_COLOR`) and `LyricsCommand` (`TEST_DISTANCE`) become config values.
