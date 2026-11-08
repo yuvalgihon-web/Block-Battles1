@@ -3,8 +3,39 @@
 A client-side Fabric mod that will play a song and show its lyrics floating in the
 world around you, synced to the music.
 
-**Current state: step 1.** `/lyrics test` shows one line of text 4 blocks in front of you,
-always facing the camera, fading in over 1 second (then fading out after a few seconds).
+**Current state: step 2.**
+
+| Command | What it does |
+| --- | --- |
+| `/lyrics test` | Shows one floating line 4 blocks in front of you, facing the camera, fading in and out. |
+| `/lyrics play <name>` | Plays `config/lyricmod/<name>.ogg` and loads `<name>.lrc`. Press Tab to see the song names. |
+| `/lyrics stop` | Stops the song. |
+| `/lyrics list` | Lists the songs in `config/lyricmod`. |
+
+The first time the game starts with the mod, it creates `.minecraft/config/lyricmod/` with a
+`README.txt` and an example song, so you can try `/lyrics play example` right away.
+The song's volume follows the **Jukebox/Note Blocks** slider in Music & Sounds.
+(Step 2 only shows the song title; step 3 will show the synced lyrics.)
+
+### Adding your own songs
+
+Put two files with the same name in `config/lyricmod/`:
+
+- `mysong.ogg`: the music (Ogg Vorbis). Convert an mp3 with e.g. Audacity: *File → Export → Export as OGG*.
+- `mysong.lrc`: the lyrics with timestamps. Many songs have ready-made .lrc files online.
+
+```
+[ti:Song title]
+[ar:Artist]
+[00:12.50]First line of the song
+[00:17.20]Second line
+```
+
+Word-by-word timing ("enhanced LRC") is also understood, for the karaoke effect later:
+
+```
+[00:12.50]<00:12.50>First <00:13.10>line <00:13.40>of <00:13.80>the <00:14.00>song
+```
 
 ## Running it
 
@@ -30,14 +61,20 @@ To build a `.jar` for your normal Minecraft install: `./gradlew build`, then cop
 | `gradlew`, `gradlew.bat`, `gradle/wrapper/` | The Gradle Wrapper: downloads the right Gradle version automatically, so you don't install Gradle yourself. |
 | `src/main/resources/fabric.mod.json` | The mod's "ID card" read by Fabric Loader: id, name, `"environment": "client"`, the entry point class, and dependencies. |
 | `src/main/java/dev/lyricmod/LyricModClient.java` | Entry point. Fabric calls it once at startup; it registers the command and the renderer. |
-| `src/main/java/dev/lyricmod/LyricsCommand.java` | Defines the client-side `/lyrics test` command. Computes a point in front of the player and hands a line to the renderer. |
+| `src/main/java/dev/lyricmod/LyricsCommand.java` | Defines the client-side `/lyrics` commands (`test`, `play`, `stop`, `list`). |
 | `src/main/java/dev/lyricmod/FloatingText.java` | Plain data for one line (text, position, start time) plus the fade-in/hold/fade-out opacity math. |
+| `src/main/java/dev/lyricmod/LyricFiles.java` | Finds songs in `config/lyricmod` and reads them. Checks every name so nothing outside that folder can be read. Creates the folder and example song on first start. |
+| `src/main/java/dev/lyricmod/LrcParser.java` | Turns the text of an `.lrc` file into a `Lyrics` object: title, artist, timed lines and (if present) timed words. |
+| `src/main/java/dev/lyricmod/Lyrics.java` | Plain data: the song's title, artist and lyric lines/words with their times. |
+| `src/main/java/dev/lyricmod/SongPlayer.java` | Plays the `.ogg` through OpenAL (Minecraft's audio library), follows the volume slider, pauses with the game, and reports the exact playback time. |
+| `src/main/resources/assets/lyricmod/example/` | The example song ("Twinkle, Twinkle, Little Star", public domain) copied to `config/lyricmod` on first start. |
+| `src/gametest/` | An automated test that starts Minecraft, runs the commands and takes screenshots (`./gradlew runClientGameTest`). Not part of the mod `.jar`. |
 | `src/main/java/dev/lyricmod/LyricRenderer.java` | Every frame, draws each active line in 3D: move to its position, rotate to face the camera, scale down, draw with the right transparency. |
 
 ## Design notes (for later steps)
 
 - **Client-only, offline:** no networking code at all. `environment: client` means the mod never loads on a server.
-- **Step 2 (files):** a loader will read only from `config/lyricmod/` (via `FabricLoader.getInstance().getConfigDir().resolve("lyricmod")`), and reject names containing `/`, `\` or `..`.
-- **Step 3 (sync):** `LyricRenderer.nowMs()` is the single clock. It will be replaced with the song's playback position.
+- **Step 2 (files):** done. Only `config/lyricmod/` is read; names with `/`, `\` or `..` and symbolic links are refused.
+- **Step 3 (sync):** `SongPlayer.positionMs()` gives the exact playback time and `SongPlayer.currentLyrics()` the lyrics; step 3 shows each word/line at its time.
 - **Step 4 (animation):** `FloatingText.opacity()` will grow into an animation that also returns position offset and scale, using easing curves.
 - **Step 5 (config):** the constants at the top of `LyricRenderer` (`TEXT_SCALE`, `TEXT_COLOR`) and `LyricsCommand` (`TEST_DISTANCE`) become config values.
