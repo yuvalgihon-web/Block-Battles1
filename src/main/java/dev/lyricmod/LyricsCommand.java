@@ -25,6 +25,7 @@ import net.minecraft.world.phys.Vec3;
  *   /lyrics spotify setup <client id> | login | logout
  *   /lyrics style <scatter|line>   how lyrics are shown
  *   /lyrics offset <ms>            show lyrics earlier (+) or later (-)
+ *   /lyrics reload                 read config/lyricmod/config.json again
  *
  * "Client-side" means the command runs only inside your own game. It is never
  * sent to the server, so it works in singleplayer and on any server, even one
@@ -85,6 +86,8 @@ public final class LyricsCommand {
 														com.mojang.brigadier.arguments.IntegerArgumentType.integer(-5000, 5000))
 												.executes(context -> runOffset(context.getSource(),
 														com.mojang.brigadier.arguments.IntegerArgumentType.getInteger(context, "ms")))))
+								.then(ClientCommands.literal("reload")
+										.executes(context -> runReload(context.getSource())))
 								.then(ClientCommands.literal("stop")
 										.executes(context -> runStop(context.getSource())))
 								.then(ClientCommands.literal("list")
@@ -215,18 +218,42 @@ public final class LyricsCommand {
 
 	/** /lyrics style <scatter|line> */
 	private static int runStyle(FabricClientCommandSource source, LyricStyle style) {
-		LyricSettings.style = style;
-		source.sendFeedback(Component.literal("Lyric style: " + style.name().toLowerCase()));
+		LyricConfig.current.styleValue = style;
+		LyricConfig.current.style = style.name().toLowerCase();
+		source.sendFeedback(Component.literal("Lyric style: " + LyricConfig.current.style));
+		saveConfig(source);
 		return 1;
 	}
 
 	/** /lyrics offset <ms> */
 	private static int runOffset(FabricClientCommandSource source, int ms) {
-		LyricSettings.offsetMs = ms;
+		LyricConfig.current.offsetMs = ms;
 		String meaning = ms == 0 ? "no correction"
 				: ms > 0 ? "lyrics " + ms + " ms earlier" : "lyrics " + (-ms) + " ms later";
 		source.sendFeedback(Component.literal("Lyrics offset: " + ms + " ms (" + meaning + ")"));
+		saveConfig(source);
 		return 1;
+	}
+
+	/** /lyrics reload — reads config.json again after you edited it. */
+	private static int runReload(FabricClientCommandSource source) {
+		List<String> problems = LyricConfig.load();
+		ScatterAnimation.reset(); // new sizes/distances apply to lines from now on
+		for (String problem : problems) {
+			source.sendError(Component.literal(problem));
+		}
+		if (LyricConfig.fileIsBroken()) {
+			return 0; // the error message above already says the old settings are kept
+		}
+		source.sendFeedback(Component.literal("Settings loaded from config/lyricmod/config.json"
+				+ (problems.isEmpty() ? "" : " (" + problems.size() + " value(s) fixed, see above)")));
+		return problems.isEmpty() ? 1 : 0;
+	}
+
+	private static void saveConfig(FabricClientCommandSource source) {
+		if (!LyricConfig.save()) {
+			source.sendError(Component.literal("Not saved: config.json has an error. Fix it and use /lyrics reload."));
+		}
 	}
 
 	/** /lyrics stop */

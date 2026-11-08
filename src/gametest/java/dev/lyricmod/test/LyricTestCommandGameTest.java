@@ -50,6 +50,7 @@ public class LyricTestCommandGameTest implements FabricClientGameTest {
 			testHebrew(context);
 			testSpotifyParts(context);
 			testScatter(context);
+			testConfig(context);
 		}
 	}
 
@@ -297,7 +298,7 @@ public class LyricTestCommandGameTest implements FabricClientGameTest {
 		check(Easing.outCubic(2f) == 1f && Easing.outCubic(-1f) == 0f, "clamped");
 
 		command(context, "lyrics offset 300");
-		check(dev.lyricmod.LyricSettings.offsetMs == 300, "offset set");
+		check(dev.lyricmod.LyricConfig.current.offsetMs == 300, "offset set");
 		command(context, "lyrics offset 0");
 
 		command(context, "lyrics style scatter");
@@ -339,6 +340,50 @@ public class LyricTestCommandGameTest implements FabricClientGameTest {
 		context.waitFor(client -> SongPlayer.isPlaying(), 100);
 		waitForSongTime(context, 7800);
 		context.takeScreenshot("step4-hebrew-scatter");
+		command(context, "lyrics stop");
+	}
+
+	/** Step 5: config.json is created, saved by commands, validated, and reloadable. */
+	private void testConfig(ClientGameTestContext context) {
+		java.nio.file.Path file = dev.lyricmod.LyricConfig.file();
+		try {
+			check(Files.isRegularFile(file), "config.json created on startup");
+			command(context, "lyrics style line");
+			check(Files.readString(file).contains("\"style\": \"line\""), "style saved: " + Files.readString(file));
+
+			// Out-of-range and wrong values are fixed, with messages.
+			Files.writeString(file, """
+					{ "style": "scatter", "textSize": 100, "color": "#FF8800", "gradientColor": "nope",
+					  "scatter": { "tiltDegrees": 0 } }""");
+			java.util.List<String> problems = context.computeOnClient(client -> dev.lyricmod.LyricConfig.load());
+			dev.lyricmod.LyricConfig config = dev.lyricmod.LyricConfig.current;
+			check(problems.size() == 2, "two problems reported: " + problems);
+			check(config.textSize == 5f && config.gradientRgb == -1 && config.colorRgb == 0xFF8800, "fixed values");
+			check(config.scatter.tiltDegrees == 0 && config.scatter.distance == 5.5f, "missing values use defaults");
+			check(Files.readString(file).contains("\"orbitDegreesPerSecond\""), "missing settings written back");
+
+			// A broken file: previous settings stay, and the file is NOT overwritten.
+			String broken = "{ \"style\": \"line\", oops";
+			Files.writeString(file, broken);
+			command(context, "lyrics reload");
+			check(dev.lyricmod.LyricConfig.current.colorRgb == 0xFF8800, "previous settings kept");
+			command(context, "lyrics offset 100");
+			check(Files.readString(file).equals(broken), "broken file not overwritten");
+			context.waitTicks(2);
+			context.takeScreenshot("step5-config-errors");
+
+			// A TikTok-like look: white to purple, bigger words, then reload and play.
+			Files.writeString(file, """
+					{ "style": "scatter", "color": "#FFFFFF", "gradientColor": "#B57BFF", "textSize": 1.3 }""");
+			command(context, "lyrics reload");
+			check(dev.lyricmod.LyricConfig.current.gradientRgb == 0xB57BFF, "gradient loaded");
+		} catch (IOException e) {
+			throw new AssertionError(e);
+		}
+		command(context, "lyrics play queen");
+		context.waitFor(client -> SongPlayer.isPlaying(), 100);
+		waitForSongTime(context, 11500);
+		context.takeScreenshot("step5-purple-gradient");
 		command(context, "lyrics stop");
 	}
 

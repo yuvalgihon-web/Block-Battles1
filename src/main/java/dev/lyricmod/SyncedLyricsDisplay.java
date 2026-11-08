@@ -24,17 +24,8 @@ import net.minecraft.world.phys.Vec3;
  */
 public final class SyncedLyricsDisplay {
 
-	/** How far in front of the player a new line appears, in blocks. */
-	private static final double DISTANCE = 4.0;
-
-	/** How high above eye level a new line appears, in blocks. */
-	private static final double HEIGHT = 0.8;
-
-	/** How long one word takes to fade in. */
-	private static final long WORD_FADE_IN_MS = 250;
-
-	/** How long a finished line takes to fade out. */
-	private static final long LINE_FADE_OUT_MS = 400;
+	// Distance, height and fade times come from the "line" part of config.json
+	// (see LyricConfig.LineSettings).
 
 	/** Lyrics we are showing, so we notice when a new song starts. */
 	private static Lyrics shownLyrics;
@@ -52,7 +43,7 @@ public final class SyncedLyricsDisplay {
 
 	/** Called by LyricRenderer every frame. */
 	static void render(LevelRenderContext context, Lyrics lyrics, long positionMs) {
-		if (LyricSettings.style == LyricStyle.SCATTER) {
+		if (LyricConfig.current.styleValue == LyricStyle.SCATTER) {
 			ScatterAnimation.render(context, lyrics, positionMs);
 			shownLyrics = null; // so the LINE style starts fresh if you switch back
 			return;
@@ -78,10 +69,12 @@ public final class SyncedLyricsDisplay {
 			currentAnchor = spotInFrontOfPlayer();
 		}
 
+		LyricConfig.LineSettings settings = LyricConfig.current.line;
+
 		// The previous line fades out during the first moments of the new line.
 		if (previousLine >= 0 && currentLine >= 0) {
 			long sinceChange = positionMs - lyrics.lines().get(currentLine).timeMs();
-			float fade = 1f - (float) sinceChange / LINE_FADE_OUT_MS;
+			float fade = 1f - progress(sinceChange, settings.lineFadeOutMs);
 			if (fade > 0 && previousAnchor != null) {
 				drawLine(context, lyrics, previousLine, previousAnchor, positionMs, fade);
 			} else {
@@ -92,7 +85,7 @@ public final class SyncedLyricsDisplay {
 		if (currentLine >= 0 && currentAnchor != null) {
 			// The current line also fades out if it's the last one and has ended.
 			long untilEnd = LyricTimeline.lineEndMs(lyrics, currentLine) - positionMs;
-			float fade = Math.clamp((float) untilEnd / LINE_FADE_OUT_MS, 0f, 1f);
+			float fade = Easing.clamp01(progress(untilEnd, settings.lineFadeOutMs));
 			drawLine(context, lyrics, currentLine, currentAnchor, positionMs, fade);
 		}
 	}
@@ -121,10 +114,12 @@ public final class SyncedLyricsDisplay {
 			float wordWidth = prepared.widths[wordIndex];
 			long sinceStart = positionMs - words.get(wordIndex).startMs();
 			if (sinceStart >= 0) {
-				float wordOpacity = Math.min(1f, (float) sinceStart / WORD_FADE_IN_MS);
+				float wordOpacity = Math.min(1f, progress(sinceStart, LyricConfig.current.line.wordFadeInMs));
+				// Color: the gradient goes from the first word to the last, in reading order.
+				int rgb = LyricConfig.current.wordColor(wordIndex, words.size());
 				// drawText centers on x, so pass the middle of the word.
 				LyricRenderer.drawText(context, anchor, prepared.drawable[wordIndex], x + wordWidth / 2f,
-						wordOpacity * lineOpacity, 1f, 0f);
+						wordOpacity * lineOpacity, 1f, 0f, rgb);
 			}
 			x += wordWidth + spaceWidth;
 		}
@@ -143,6 +138,12 @@ public final class SyncedLyricsDisplay {
 		if (flat.lengthSqr() < 1.0e-4) {
 			flat = new Vec3(0, 0, 1); // looking straight up or down
 		}
-		return player.getEyePosition().add(flat.normalize().scale(DISTANCE)).add(0, HEIGHT, 0);
+		LyricConfig.LineSettings settings = LyricConfig.current.line;
+		return player.getEyePosition().add(flat.normalize().scale(settings.distance)).add(0, settings.height, 0);
+	}
+
+	/** How far along an animation of {@code durationMs} is after {@code elapsedMs} (1 = done). */
+	static float progress(long elapsedMs, int durationMs) {
+		return durationMs <= 0 ? 1f : (float) elapsedMs / durationMs;
 	}
 }

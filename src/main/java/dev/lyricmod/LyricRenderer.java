@@ -36,14 +36,11 @@ import net.minecraft.world.phys.Vec3;
 public final class LyricRenderer {
 
 	/**
-	 * Size of one font pixel in blocks. Name tags use 0.025; the Minecraft
-	 * font is 9 pixels tall, so a name tag line is about 0.23 blocks high.
-	 * We use a bit less so a whole line fits on screen. (Step 5: from config.)
+	 * Size of one font pixel in blocks, before the "textSize" setting.
+	 * Name tags use 0.025; the Minecraft font is 9 pixels tall, so a name tag
+	 * line is about 0.23 blocks high. We use a bit less so a whole line fits.
 	 */
 	private static final float TEXT_SCALE = 0.02f;
-
-	/** Text color as 0xRRGGBB (white). Alpha is added per frame. (Step 5: from config.) */
-	private static final int TEXT_COLOR = 0xFFFFFF;
 
 	/** The simple floating lines currently on screen. */
 	private static final List<FloatingText> ACTIVE = new ArrayList<>();
@@ -77,10 +74,10 @@ public final class LyricRenderer {
 		//    The offset setting shifts the lyrics earlier (+) or later (-).
 		if (SpotifyMode.isActive()) {
 			SyncedLyricsDisplay.render(context, SpotifyMode.currentLyrics(),
-					SpotifyMode.positionMs() + LyricSettings.offsetMs);
+					SpotifyMode.positionMs() + LyricConfig.current.offsetMs);
 		} else {
 			SyncedLyricsDisplay.render(context, SongPlayer.currentLyrics(),
-					SongPlayer.positionMs() + LyricSettings.offsetMs);
+					SongPlayer.positionMs() + LyricConfig.current.offsetMs);
 		}
 
 		// 2. Simple floating lines.
@@ -141,12 +138,16 @@ public final class LyricRenderer {
 	 */
 	static void drawText(LevelRenderContext context, Vec3 position, String text, float xOffset, float opacity,
 			boolean rightToLeft, float scale, float tiltDegrees) {
-		drawText(context, position, prepare(text, rightToLeft), xOffset, opacity, scale, tiltDegrees);
+		drawText(context, position, prepare(text, rightToLeft), xOffset, opacity, scale, tiltDegrees,
+				LyricConfig.current.colorRgb);
 	}
 
-	/** Same as above, for text already prepared with {@link #prepare} (faster when drawn every frame). */
+	/**
+	 * Same as above, for text already prepared with {@link #prepare} (faster when
+	 * drawn every frame), in the color {@code rgb} (0xRRGGBB).
+	 */
 	static void drawText(LevelRenderContext context, Vec3 position, FormattedCharSequence chars, float xOffset,
-			float opacity, float scale, float tiltDegrees) {
+			float opacity, float scale, float tiltDegrees, int rgb) {
 		// Very low alpha values can be treated as "fully opaque" by the
 		// text renderer (an old Minecraft quirk), so skip nearly-invisible
 		// frames instead of having the text flash at full brightness.
@@ -155,7 +156,7 @@ public final class LyricRenderer {
 			return;
 		}
 		// Color as 0xAARRGGBB: put alpha in the top 8 bits.
-		int argb = (alpha << 24) | TEXT_COLOR;
+		int argb = (alpha << 24) | (rgb & 0xFFFFFF);
 
 		Font font = Minecraft.getInstance().font;
 		CameraRenderState camera = context.levelState().cameraRenderState;
@@ -178,7 +179,7 @@ public final class LyricRenderer {
 
 		// 3. Shrink font pixels down to world size; negative Y flips the
 		//    text right side up.
-		float size = TEXT_SCALE * scale;
+		float size = TEXT_SCALE * LyricConfig.current.textSize * scale;
 		poses.scale(size, -size, size);
 
 		// 4. Submit the text, centered on xOffset: shift left by half its width
@@ -189,7 +190,7 @@ public final class LyricRenderer {
 				poses,
 				x, y,
 				chars,
-				true,                          // drop shadow, easier to read
+				LyricConfig.current.shadow,    // dark shadow behind the letters, easier to read
 				Font.DisplayMode.NORMAL,       // hidden behind blocks, like real objects
 				LightCoordsUtil.FULL_BRIGHT,   // glow even at night or in caves
 				argb,                          // color with alpha for the fade

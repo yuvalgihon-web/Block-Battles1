@@ -29,42 +29,17 @@ import net.minecraft.world.phys.Vec3;
  */
 public final class ScatterAnimation {
 
-	// ----- Layout: where words are placed (step 5 will make some of these configurable) -----
+	// Most numbers come from the "scatter" part of config.json (see LyricConfig.ScatterSettings).
 
-	/** Degrees of arc per word, and the smallest/largest arc a line uses. */
+	/** Degrees of arc per word, and the smallest arc a line uses (the largest is "spreadDegrees"). */
 	private static final float ARC_PER_WORD = 13f;
 	private static final float MIN_ARC = 20f;
-	private static final float MAX_ARC = 70f;
 	/** Random wiggle added to each word's angle, in degrees. */
 	private static final float ANGLE_JITTER = 4f;
-	/** Distance from the eyes, in blocks. */
-	private static final float MIN_DISTANCE = 4.5f;
-	private static final float MAX_DISTANCE = 6.5f;
-	/** Height above the eyes, in blocks. */
-	private static final float MIN_HEIGHT = -0.2f;
-	private static final float MAX_HEIGHT = 1.6f;
-	/** Word size, as a multiple of normal floating text. */
-	private static final float MIN_SIZE = 1.3f;
-	private static final float MAX_SIZE = 2.3f;
-	/** Tilt, in degrees to either side. */
-	private static final float MAX_TILT = 12f;
-
-	// ----- Motion -----
-
-	/** How long a word takes to appear (fade + pop). */
-	private static final long APPEAR_MS = 400;
-	/** How long a line takes to leave after it ends. */
-	private static final long LEAVE_MS = 600;
-	/** Slow upward drift while visible, blocks per second. */
-	private static final float DRIFT_UP_PER_SECOND = 0.08f;
 	/** Extra rise while leaving, in blocks. */
 	private static final float LEAVE_RISE = 0.6f;
-	/** Orbit speed of a whole line around the player, degrees per second. */
-	private static final float ORBIT_DEGREES_PER_SECOND = 3f;
 	/** For very long lines, center the orbit on this much time only. */
 	private static final long MAX_ORBIT_MS = 8000;
-	/** Words already sung are a little dimmer than the newest one. */
-	private static final float SUNG_WORD_OPACITY = 0.75f;
 
 	/** Where and how one word of a line is placed (chosen once per line). */
 	private record WordSpot(float angleOffset, float distance, float height, float size, float tilt) {
@@ -78,6 +53,12 @@ public final class ScatterAnimation {
 	private static final Map<Integer, LineLayout> layouts = new HashMap<>();
 
 	private ScatterAnimation() {
+	}
+
+	/** Forgets all layouts, e.g. after the settings changed (/lyrics reload). */
+	static void reset() {
+		shownLyrics = null;
+		layouts.clear();
 	}
 
 	/** Called every frame by SyncedLyricsDisplay when the SCATTER style is selected. */
@@ -105,9 +86,10 @@ public final class ScatterAnimation {
 
 	private static void drawLine(LevelRenderContext context, Lyrics lyrics, int line, long positionMs,
 			LocalPlayer player) {
+		LyricConfig.ScatterSettings settings = LyricConfig.current.scatter;
 		long lineStart = lyrics.lines().get(line).timeMs();
 		long lineEnd = LyricTimeline.lineEndMs(lyrics, line);
-		if (positionMs > lineEnd + LEAVE_MS) {
+		if (positionMs > lineEnd + settings.leaveMs) {
 			return;
 		}
 		// Words, direction and drawable text are worked out once per line (see PreparedLine).
@@ -119,13 +101,13 @@ public final class ScatterAnimation {
 		LineLayout layout = layouts.computeIfAbsent(line,
 				index -> createLayout(lyrics, index, prepared, player.getYRot()));
 
-		// Leaving: 0 while the line is sung, rising to 1 during LEAVE_MS after it ends.
-		float leave = Easing.inCubic((float) (positionMs - lineEnd) / LEAVE_MS);
+		// Leaving: 0 while the line is sung, rising to 1 during "leaveMs" after it ends.
+		float leave = Easing.inCubic(SyncedLyricsDisplay.progress(positionMs - lineEnd, settings.leaveMs));
 		// Orbit: the whole line turns slowly around the player. We count from the
 		// MIDDLE of the line's time, so it starts a bit to one side and passes through
 		// the center, instead of drifting off-screen during long lines.
 		long middle = lineStart + Math.min(lineEnd - lineStart, MAX_ORBIT_MS) / 2;
-		float orbit = ORBIT_DEGREES_PER_SECOND * (positionMs - middle) / 1000f;
+		float orbit = settings.orbitDegreesPerSecond * (positionMs - middle) / 1000f;
 		// Index of the newest word that has started (the one being sung).
 		int newest = -1;
 		for (int i = 0; i < words.size(); i++) {
@@ -146,17 +128,18 @@ public final class ScatterAnimation {
 				continue; // not sung yet
 			}
 			WordSpot spot = layout.spots().get(i);
-			float appear = (float) age / APPEAR_MS;
+			float appear = SyncedLyricsDisplay.progress(age, settings.appearMs);
 
 			float opacity = Easing.outCubic(appear) * (1 - leave);
 			if (i != newest) {
-				opacity *= SUNG_WORD_OPACITY;
+				opacity *= settings.sungWordOpacity;
 			}
 			// Pop: start at 50% size, overshoot a little, settle at 100%; shrink while leaving.
-			float scale = spot.size() * Easing.lerp(0.5f, 1f, Easing.outBack(appear)) * (1 - 0.3f * leave);
+			float pop = settings.popIn ? Easing.lerp(0.5f, 1f, Easing.outBack(appear)) : 1f;
+			float scale = spot.size() * pop * (1 - 0.3f * leave);
 
 			float height = spot.height()
-					+ DRIFT_UP_PER_SECOND * age / 1000f
+					+ settings.driftUpPerSecond * age / 1000f
 					+ LEAVE_RISE * leave;
 			double angle = Math.toRadians(layout.centerYaw() + spot.angleOffset() + orbit);
 			// Minecraft's yaw: 0 = looking toward +Z (south), 90 = toward -X (west).
@@ -165,7 +148,9 @@ public final class ScatterAnimation {
 					height,
 					Math.cos(angle) * spot.distance());
 
-			LyricRenderer.drawText(context, position, prepared.drawable[i], 0, opacity, scale, spot.tilt());
+			// Color: the gradient goes from the first word to the last, in reading order.
+			int rgb = LyricConfig.current.wordColor(i, words.size());
+			LyricRenderer.drawText(context, position, prepared.drawable[i], 0, opacity, scale, spot.tilt(), rgb);
 		}
 	}
 
@@ -174,9 +159,10 @@ public final class ScatterAnimation {
 	 * fixed "seed" per line, so the same song always gets the same layout.
 	 */
 	private static LineLayout createLayout(Lyrics lyrics, int line, PreparedLine prepared, float playerYaw) {
+		LyricConfig.ScatterSettings settings = LyricConfig.current.scatter;
 		Random random = new Random(lyrics.title().hashCode() * 31L + line);
 		int count = prepared.words.size();
-		float arc = Math.clamp(count * ARC_PER_WORD, MIN_ARC, MAX_ARC);
+		float arc = Math.min(Math.max(count * ARC_PER_WORD, MIN_ARC), settings.spreadDegrees);
 
 		// Reading order on screen: left to right (Hebrew lines: the first word on the right).
 		int[] leftToRight = prepared.leftToRight;
@@ -190,12 +176,17 @@ public final class ScatterAnimation {
 		List<WordSpot> spots = new ArrayList<>();
 		for (int i = 0; i < count; i++) {
 			spots.add(new WordSpot(
-					angleOffsets[i] + (random.nextFloat() * 2 - 1) * ANGLE_JITTER,
-					Easing.lerp(MIN_DISTANCE, MAX_DISTANCE, random.nextFloat()),
-					Easing.lerp(MIN_HEIGHT, MAX_HEIGHT, random.nextFloat()),
-					Easing.lerp(MIN_SIZE, MAX_SIZE, random.nextFloat()),
-					(random.nextFloat() * 2 - 1) * MAX_TILT));
+					angleOffsets[i] + randomPlusMinus(random) * ANGLE_JITTER,
+					settings.distance + randomPlusMinus(random) * settings.distanceVariation,
+					settings.height + randomPlusMinus(random) * settings.heightVariation,
+					settings.wordSize + randomPlusMinus(random) * settings.sizeVariation,
+					randomPlusMinus(random) * settings.tiltDegrees));
 		}
 		return new LineLayout(playerYaw, spots);
+	}
+
+	/** A random number between -1 and +1. */
+	private static float randomPlusMinus(Random random) {
+		return random.nextFloat() * 2 - 1;
 	}
 }

@@ -26,6 +26,9 @@ public class LyricModClient implements ClientModInitializer {
 	@Override
 	public void onInitializeClient() {
 		LyricFiles.createFolderIfMissing();
+		for (String problem : LyricConfig.load()) {
+			LOGGER.warn("config.json: {}", problem);
+		}
 		SpotifyAuth.load();
 		LyricsCommand.register();
 		LyricRenderer.register();

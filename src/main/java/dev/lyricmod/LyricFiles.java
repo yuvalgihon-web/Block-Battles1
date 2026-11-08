@@ -68,6 +68,9 @@ public final class LyricFiles {
 					  3. Press K each time a line starts; after the last line press K
 					     once more. mysong.lrc is saved for you.
 
+					Settings (colors, size, distance, animation) are in config.json in this
+					folder. Edit it, save, and type /lyrics reload in game.
+
 					To convert an .mp3 to .ogg you can use a free tool such as Audacity
 					(File > Export > Export as OGG).
 					""", StandardCharsets.UTF_8);

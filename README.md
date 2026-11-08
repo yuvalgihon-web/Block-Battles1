@@ -3,8 +3,9 @@
 A client-side Fabric mod that will play a song and show its lyrics floating in the
 world around you, synced to the music.
 
-**Current state: step 4.** Lyrics appear in the world in sync with the music, word by word,
-scattered around you with animations (or as a simple line, if you prefer).
+**Current state: step 5.** Lyrics appear in the world in sync with the music, word by word,
+scattered around you with animations (or as a simple line), and everything can be adjusted in
+`config/lyricmod/config.json`.
 
 | Command | What it does |
 | --- | --- |
@@ -13,6 +14,7 @@ scattered around you with animations (or as a simple line, if you prefer).
 | `/lyrics style scatter` | (default) Words float around you: each pops in when sung, tilted, at its own distance/height/size; lines slowly orbit and drift up, then float away. |
 | `/lyrics style line` | Each line as a straight row of words in front of you. |
 | `/lyrics offset <ms>` | Timing correction: positive shows lyrics earlier (if they come late, e.g. Bluetooth headphones or Spotify), negative later. `0` = none. |
+| `/lyrics reload` | Reads `config/lyricmod/config.json` again after you edited it. |
 | `/lyrics stop` | Stops the song. |
 | `/lyrics list` | Lists the songs in `config/lyricmod`. |
 | `/lyrics spotify` | Shows the lyrics of whatever the Spotify app is playing (lyrics from LRCLIB). See below for the one-time setup. |
@@ -24,6 +26,35 @@ The song's volume follows the **Jukebox/Note Blocks** slider in Music & Sounds.
 Words appear one by one exactly when they're sung, and the previous line leaves when the next starts.
 In the default **scatter** style each line is spread over an arc around where you were looking when it
 started (still in reading order, right-to-left for Hebrew); the words travel with you as you walk.
+
+### Settings (config.json)
+
+`config/lyricmod/config.json` is created the first time the game starts. Edit it with any text
+editor (keep the quotes and commas), save, and type `/lyrics reload` in game. `/lyrics style` and
+`/lyrics offset` save their changes into this file too. Values that are out of range are corrected
+(with a message in chat); if the file has a typo, your previous settings stay active and the file
+is not overwritten until you fix it.
+
+| Setting | Default | Meaning |
+| --- | --- | --- |
+| `style` | `"scatter"` | `"scatter"` or `"line"`. |
+| `offsetMs` | `0` | Timing correction: positive = lyrics earlier. |
+| `color` | `"#FFFFFF"` | Text color (`#RRGGBB`). |
+| `gradientColor` | `"#D7B8FF"` | Each line fades from `color` (first word) to this color (last word). `""` = off. |
+| `shadow` | `true` | Dark shadow behind the letters. |
+| `textSize` | `1.0` | Size multiplier for all lyrics (0.2 to 5). |
+| `line.distance` / `line.height` | `4.0` / `0.8` | Where lines appear in the line style, in blocks. |
+| `line.wordFadeInMs` / `line.lineFadeOutMs` | `250` / `400` | Fade times in the line style. |
+| `scatter.distance` ± `distanceVariation` | `5.5` ± `1.0` | How far words are from you, in blocks. |
+| `scatter.height` ± `heightVariation` | `0.7` ± `0.9` | How high above your eyes, in blocks. |
+| `scatter.wordSize` ± `sizeVariation` | `1.8` ± `0.5` | Word size. |
+| `scatter.spreadDegrees` | `70` | Widest angle one line is spread over. |
+| `scatter.tiltDegrees` | `12` | Largest tilt per word (0 = straight). |
+| `scatter.orbitDegreesPerSecond` | `3` | Orbit speed around you (0 = off, negative = other way). |
+| `scatter.driftUpPerSecond` | `0.08` | Upward drift (0 = off). |
+| `scatter.popIn` | `true` | Small bounce when a word appears. |
+| `scatter.appearMs` / `scatter.leaveMs` | `400` / `600` | How long a word takes to appear / a line to leave. |
+| `scatter.sungWordOpacity` | `0.75` | Brightness of words already sung (0 to 1). |
 
 ### Spotify mode
 
@@ -120,7 +151,7 @@ To build a `.jar` for your normal Minecraft install: `./gradlew build`, then cop
 | `src/main/java/dev/lyricmod/ScatterAnimation.java` | The scatter style: chooses each word's spot (angle, distance, height, size, tilt) once per line, then animates pop-in, drift, orbit and leaving every frame. |
 | `src/main/java/dev/lyricmod/Easing.java` | Easing curves (`outCubic`, `inCubic`, `inOutSine`, `outBack`) that make motion start and stop smoothly. |
 | `src/main/java/dev/lyricmod/LyricStyle.java` | The available styles (`SCATTER`, `LINE`). |
-| `src/main/java/dev/lyricmod/LyricSettings.java` | The player's current choices: style and timing offset (step 5 will save them). |
+| `src/main/java/dev/lyricmod/LyricConfig.java` | All settings: loads/saves `config.json` with Gson, corrects out-of-range values, computes the gradient color of each word. |
 | `src/main/java/dev/lyricmod/PreparedLine.java` | Caches the per-line work (word times, direction, drawable text, widths) so it's done once per line instead of every frame. |
 | `src/main/java/dev/lyricmod/LyricTimeline.java` | Timing math only: which line is sung at a given time, when it ends, and when each of its words starts. |
 | `src/main/java/dev/lyricmod/SyncedLyricsDisplay.java` | Every frame, reads the song's playback time and draws the current line word by word (and the previous line fading out). |
@@ -132,5 +163,6 @@ To build a `.jar` for your normal Minecraft install: `./gradlew build`, then cop
 - **Step 2 (files):** done. Only `config/lyricmod/` is read; names with `/`, `\` or `..` and symbolic links are refused.
 - **Step 3 (sync):** done. Everything is computed from `SongPlayer.positionMs()` (the audio device's own playback time), so lyrics stay in sync through lag and pauses.
 - **Spotify mode:** done. `LyricRenderer` takes lyrics and time from `SpotifyMode` instead of `SongPlayer`; everything else is shared.
-- **Step 4 (animation):** done. The tuning numbers live as constants at the top of `ScatterAnimation`.
-- **Step 5 (config):** text color, size, distance, style and the scatter tuning numbers move into a config file.
+- **Step 4 (animation):** done.
+- **Step 5 (config):** done. Every tuning number is a field in `LyricConfig`; adding a setting = adding a field (plus a range check in `validate`).
+- **Next:** the "Now Playing" title card and the karaoke bar at the top of the screen, and a smoother custom font.
