@@ -44,3 +44,16 @@ java {
 	sourceCompatibility = JavaVersion.VERSION_25
 	targetCompatibility = JavaVersion.VERSION_25
 }
+
+// Automated in-game test (see src/gametest). `./gradlew runClientGameTest`
+// starts Minecraft, creates a test world, runs /lyrics test and saves
+// screenshots to build/run/clientGameTest/screenshots. It is NOT part of
+// the mod .jar; it only exists to check that the mod works.
+fabricApi {
+	configureTests {
+		createSourceSet = true
+		modId = "lyricmod-test"
+		enableGameTests = false
+		eula = true
+	}
+}

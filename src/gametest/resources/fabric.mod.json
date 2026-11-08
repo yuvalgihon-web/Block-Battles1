@@ -1,0 +1,10 @@
+{
+	"schemaVersion": 1,
+	"id": "lyricmod-test",
+	"version": "1.0.0",
+	"name": "Lyric Mod automated test",
+	"environment": "client",
+	"entrypoints": {
+		"fabric-client-gametest": ["dev.lyricmod.test.LyricTestCommandGameTest"]
+	}
+}
