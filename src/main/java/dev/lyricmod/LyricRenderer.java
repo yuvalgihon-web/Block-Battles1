@@ -16,9 +16,11 @@ import net.minecraft.util.Util;
 import net.minecraft.world.phys.Vec3;
 
 /**
- * Draws every active {@link FloatingText} in the 3D world, once per frame.
+ * Draws floating text in the 3D world, once per frame:
+ *  - simple {@link FloatingText} lines (the /lyrics test line and song titles);
+ *  - the synced lyrics of the playing song, via {@link SyncedLyricsDisplay}.
  *
- * How 3D text works, in short:
+ * How 3D text works, in short (see {@link #drawText}):
  *  1. Minecraft draws the world relative to the camera, so we first move
  *     ("translate") from the camera to the text's position.
  *  2. We rotate by the camera's rotation so the text always faces us
@@ -41,7 +43,7 @@ public final class LyricRenderer {
 	/** Text color as 0xRRGGBB (white). Alpha is added per frame. (Step 5: from config.) */
 	private static final int TEXT_COLOR = 0xFFFFFF;
 
-	/** The lines currently on screen. */
+	/** The simple floating lines currently on screen. */
 	private static final List<FloatingText> ACTIVE = new ArrayList<>();
 
 	private LyricRenderer() {
@@ -60,77 +62,90 @@ public final class LyricRenderer {
 	}
 
 	/**
-	 * Current time in milliseconds. A single helper so every class uses the
-	 * same clock. In step 3 we'll switch to the song's playback position.
+	 * Current time in milliseconds, for the simple floating lines.
+	 * (Synced lyrics use the song's playback time instead.)
 	 */
 	public static long nowMs() {
 		return Util.getMillis();
 	}
 
 	private static void render(LevelRenderContext context) {
+		// 1. Synced lyrics of the playing song (nothing happens if no song plays).
+		SyncedLyricsDisplay.render(context, SongPlayer.currentLyrics(), SongPlayer.positionMs());
+
+		// 2. Simple floating lines.
 		if (ACTIVE.isEmpty()) {
-			return; // Nothing to draw: do no work at all.
+			return;
 		}
-
 		long now = nowMs();
+		ACTIVE.removeIf(line -> line.isFinished(now)); // forget faded-out lines
+		for (FloatingText line : ACTIVE) {
+			drawText(context, line.position(), line.text(), 0, line.opacity(now));
+		}
+	}
 
-		// Forget lines that have completely faded out.
-		ACTIVE.removeIf(line -> line.isFinished(now));
+	/** Width of a piece of text, in font pixels. */
+	static float textWidth(String text) {
+		return Minecraft.getInstance().font.width(text);
+	}
+
+	/**
+	 * Draws one piece of text in the world, facing the camera.
+	 *
+	 * @param position where the text's anchor point is in the world
+	 * @param text     what to write
+	 * @param xOffset  how far (in font pixels) the text's CENTER is moved sideways
+	 *                 from the anchor; used to place the words of a line next to each other
+	 * @param opacity  0 = invisible, 1 = fully visible
+	 */
+	static void drawText(LevelRenderContext context, Vec3 position, String text, float xOffset, float opacity) {
+		// Very low alpha values can be treated as "fully opaque" by the
+		// text renderer (an old Minecraft quirk), so skip nearly-invisible
+		// frames instead of having the text flash at full brightness.
+		int alpha = Math.round(opacity * 255);
+		if (alpha < 5) {
+			return;
+		}
+		// Color as 0xAARRGGBB: put alpha in the top 8 bits.
+		int argb = (alpha << 24) | TEXT_COLOR;
 
 		Font font = Minecraft.getInstance().font;
 		CameraRenderState camera = context.levelState().cameraRenderState;
 		Vec3 cameraPos = camera.pos;
 
 		// A PoseStack keeps track of moves/rotations/scales ("poses").
-		// push/pop saves and restores it, so one line's changes don't leak
-		// into the next line or into the rest of the game's rendering.
+		// push/pop saves and restores it, so our changes don't leak
+		// into the rest of the game's rendering.
 		PoseStack poses = context.poseStack();
+		poses.pushPose();
 
-		for (FloatingText line : ACTIVE) {
-			float opacity = line.opacity(now);
+		// 1. Move from the camera to the text position.
+		poses.translate(position.x - cameraPos.x, position.y - cameraPos.y, position.z - cameraPos.z);
 
-			// Very low alpha values can be treated as "fully opaque" by the
-			// text renderer (an old Minecraft quirk), so skip nearly-invisible
-			// frames instead of having the text flash at full brightness.
-			int alpha = Math.round(opacity * 255);
-			if (alpha < 5) {
-				continue;
-			}
+		// 2. Face the camera.
+		poses.rotate(camera.orientation);
 
-			// Color as 0xAARRGGBB: put alpha in the top 8 bits.
-			int argb = (alpha << 24) | TEXT_COLOR;
+		// 3. Shrink font pixels down to world size; negative Y flips the
+		//    text right side up.
+		poses.scale(TEXT_SCALE, -TEXT_SCALE, TEXT_SCALE);
 
-			poses.pushPose();
+		// 4. Submit the text, centered on xOffset: shift left by half its width
+		//    and up by half its height (both in font pixels).
+		FormattedCharSequence chars = Component.literal(text).getVisualOrderText();
+		float x = xOffset - font.width(chars) / 2f;
+		float y = -font.lineHeight / 2f;
+		context.submitNodeCollector().submitText(
+				poses,
+				x, y,
+				chars,
+				true,                          // drop shadow, easier to read
+				Font.DisplayMode.NORMAL,       // hidden behind blocks, like real objects
+				LightCoordsUtil.FULL_BRIGHT,   // glow even at night or in caves
+				argb,                          // color with alpha for the fade
+				0,                             // background color (0 = none)
+				0                              // outline color (0 = none)
+		);
 
-			// 1. Move from the camera to the text position.
-			Vec3 p = line.position();
-			poses.translate(p.x - cameraPos.x, p.y - cameraPos.y, p.z - cameraPos.z);
-
-			// 2. Face the camera.
-			poses.rotate(camera.orientation);
-
-			// 3. Shrink font pixels down to world size; negative Y flips the
-			//    text right side up.
-			poses.scale(TEXT_SCALE, -TEXT_SCALE, TEXT_SCALE);
-
-			// 4. Submit the text, centered: shift left by half its width and
-			//    up by half its height (both in font pixels).
-			FormattedCharSequence text = Component.literal(line.text()).getVisualOrderText();
-			float x = -font.width(text) / 2f;
-			float y = -font.lineHeight / 2f;
-			context.submitNodeCollector().submitText(
-					poses,
-					x, y,
-					text,
-					true,                          // drop shadow, easier to read
-					Font.DisplayMode.NORMAL,       // hidden behind blocks, like real objects
-					LightCoordsUtil.FULL_BRIGHT,   // glow even at night or in caves
-					argb,                          // color with alpha for the fade
-					0,                             // background color (0 = none)
-					0                              // outline color (0 = none)
-			);
-
-			poses.popPose();
-		}
+		poses.popPose();
 	}
 }

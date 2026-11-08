@@ -64,7 +64,7 @@ public final class LyricsCommand {
 
 	/** /lyrics test — shows one floating line. Returns 1 to mean "success". */
 	private static int runTest(FabricClientCommandSource source) {
-		showInFrontOfPlayer(source.getPlayer(), "♪ Hello from Lyric Mod ♪");
+		showInFrontOfPlayer(source.getPlayer(), "♪ Hello from Lyric Mod ♪", 0);
 		source.sendFeedback(Component.literal("Showing a test lyric line."));
 		return 1;
 	}
@@ -94,8 +94,8 @@ public final class LyricsCommand {
 					String byArtist = lyrics.artist().isEmpty() ? "" : " — " + lyrics.artist();
 					source.sendFeedback(Component.literal("♪ Now playing: " + lyrics.title() + byArtist
 							+ " (" + lyrics.lines().size() + " lyric lines)"));
-					// Until step 3 shows the real lyrics, float the song title in front of us.
-					showInFrontOfPlayer(source.getPlayer(), "♪ " + lyrics.title() + byArtist + " ♪");
+					// Float the song title in front of us, a bit above where the lyrics appear.
+					showInFrontOfPlayer(source.getPlayer(), "♪ " + lyrics.title() + byArtist + " ♪", 1.8);
 				},
 				error -> source.sendError(Component.literal(error)));
 		return 1;
@@ -123,11 +123,15 @@ public final class LyricsCommand {
 		return 1;
 	}
 
-	/** Puts a floating line of text a few blocks in front of the player's eyes. */
-	private static void showInFrontOfPlayer(LocalPlayer player, String text) {
+	/**
+	 * Puts a floating line of text a few blocks in front of the player's eyes.
+	 *
+	 * @param raise how many blocks higher than straight ahead to put it
+	 */
+	private static void showInFrontOfPlayer(LocalPlayer player, String text, double raise) {
 		// getLookAngle gives a direction of length 1; scaling it by 4 gives a
 		// point 4 blocks along that direction.
-		Vec3 position = player.getEyePosition().add(player.getLookAngle().scale(TEXT_DISTANCE));
+		Vec3 position = player.getEyePosition().add(player.getLookAngle().scale(TEXT_DISTANCE)).add(0, raise, 0);
 		LyricRenderer.show(new FloatingText(text, position, LyricRenderer.nowMs()));
 	}
 }

@@ -2,7 +2,11 @@ package dev.lyricmod.test;
 
 import java.io.IOException;
 
+import java.util.List;
+
+import dev.lyricmod.LrcParser;
 import dev.lyricmod.LyricFiles;
+import dev.lyricmod.LyricTimeline;
 import dev.lyricmod.Lyrics;
 import dev.lyricmod.SongPlayer;
 import net.fabricmc.fabric.api.client.gametest.v1.FabricClientGameTest;
@@ -31,7 +35,9 @@ public class LyricTestCommandGameTest implements FabricClientGameTest {
 
 			testFloatingText(context);
 			testFiles();
+			testTimeline();
 			testPlaySong(context);
+			testSyncedLyrics(context);
 		}
 	}
 
@@ -98,6 +104,55 @@ public class LyricTestCommandGameTest implements FabricClientGameTest {
 		command(context, "lyrics play ../secret");
 		context.waitTicks(2);
 		context.takeScreenshot("step2-chat");
+	}
+
+	/** Step 3: the timing math, without the game. */
+	private void testTimeline() {
+		// Lines WITHOUT word times: words are spread over 60% of the line.
+		Lyrics plain = LrcParser.parse("[00:01.00]one two three four\n[00:05.00]next line\n", "plain");
+		check(LyricTimeline.lineAt(plain, 500) == -1, "before first line");
+		check(LyricTimeline.lineAt(plain, 1000) == 0, "first line starts at 1s");
+		check(LyricTimeline.lineAt(plain, 4999) == 0, "first line until 5s");
+		check(LyricTimeline.lineAt(plain, 5000) == 1, "second line at 5s");
+		List<LyricTimeline.TimedWord> words = LyricTimeline.words(plain, 0);
+		check(words.size() == 4, "4 words");
+		check(words.get(0).startMs() == 1000 && words.get(1).startMs() == 1600
+				&& words.get(3).startMs() == 2800, "evenly spread words: " + words);
+		check(LyricTimeline.lineEndMs(plain, 1) == 10000, "last line lasts 5s");
+
+		// Lines WITH word times use them as they are.
+		try {
+			Lyrics example = LyricFiles.loadLyrics("example");
+			List<LyricTimeline.TimedWord> timed = LyricTimeline.words(example, 1);
+			check(timed.get(0).text().equals("How") && timed.get(0).startMs() == 5000, "How @5s: " + timed);
+			check(timed.get(2).text().equals("wonder") && timed.get(2).startMs() == 6000, "wonder @6s: " + timed);
+		} catch (IOException e) {
+			throw new AssertionError(e);
+		}
+	}
+
+	/** Step 3: screenshots at exact moments of the song. */
+	private void testSyncedLyrics(ClientGameTestContext context) {
+		command(context, "lyrics play example");
+		context.waitFor(client -> SongPlayer.isPlaying(), 100);
+
+		// 3.3s: "Twinkle, twinkle, little" visible, "star" (at 4.0s) not yet.
+		waitForSongTime(context, 3300);
+		context.takeScreenshot("step3-3.3s-twinkle-twinkle-little");
+
+		// 5.6s: new line "How I" while the old line fades out.
+		waitForSongTime(context, 5600);
+		context.takeScreenshot("step3-5.6s-how-i");
+
+		// 8.4s: the whole second line.
+		waitForSongTime(context, 8400);
+		context.takeScreenshot("step3-8.4s-full-line");
+
+		command(context, "lyrics stop");
+	}
+
+	private static void waitForSongTime(ClientGameTestContext context, long ms) {
+		context.waitFor(client -> SongPlayer.positionMs() >= ms, 400);
 	}
 
 	/** Sends a command exactly like a player typing it in chat. */
