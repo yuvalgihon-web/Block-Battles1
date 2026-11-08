@@ -5,6 +5,7 @@ import java.nio.file.Files;
 import java.util.List;
 
 import com.mojang.blaze3d.platform.InputConstants;
+import dev.lyricmod.BidiText;
 import dev.lyricmod.LrcParser;
 import dev.lyricmod.LyricRecorder;
 import dev.lyricmod.LyricFiles;
@@ -41,6 +42,7 @@ public class LyricTestCommandGameTest implements FabricClientGameTest {
 			testPlaySong(context);
 			testSyncedLyrics(context);
 			testRecorder(context);
+			testHebrew(context);
 		}
 	}
 
@@ -193,6 +195,35 @@ public class LyricTestCommandGameTest implements FabricClientGameTest {
 		} catch (IOException e) {
 			throw new AssertionError(e);
 		}
+	}
+
+	/** Right-to-left lyrics: the first Hebrew word must be drawn on the right. */
+	private void testHebrew(ClientGameTestContext context) {
+		check(BidiText.isRightToLeft("שלום עולם"), "Hebrew is right-to-left");
+		check(!BidiText.isRightToLeft("hello"), "English is left-to-right");
+		check(java.util.Arrays.equals(BidiText.visualWordOrder(List.of("שלום", "עולם", "יפה"), true),
+				new int[] {2, 1, 0}), "pure Hebrew order");
+		// English words inside a Hebrew line keep their own left-to-right order.
+		check(java.util.Arrays.equals(BidiText.visualWordOrder(List.of("שיר", "Hate", "Me", "יפה"), true),
+				new int[] {3, 1, 2, 0}), "mixed order: "
+				+ java.util.Arrays.toString(BidiText.visualWordOrder(List.of("שיר", "Hate", "Me", "יפה"), true)));
+
+		try {
+			Files.writeString(LyricFiles.folder().resolve("hebrew.lrc"),
+					"[ti:שיר בדיקה]\n[00:01.00]אחת שתיים שלוש, ארבע\n[00:05.00]שיר Hate Me יפה\n[00:09.00]\n");
+			Files.copy(LyricFiles.folder().resolve("example.ogg"), LyricFiles.folder().resolve("hebrew.ogg"));
+		} catch (IOException e) {
+			throw new AssertionError(e);
+		}
+		command(context, "lyrics play hebrew");
+		context.waitFor(client -> SongPlayer.isPlaying(), 100);
+		waitForSongTime(context, 1700); // first two words
+		context.takeScreenshot("hebrew-1.7s-first-words-on-right");
+		waitForSongTime(context, 3900);
+		context.takeScreenshot("hebrew-3.9s-full-line");
+		waitForSongTime(context, 8000);
+		context.takeScreenshot("hebrew-8s-mixed-line");
+		command(context, "lyrics stop");
 	}
 
 	private static void waitForSongTime(ClientGameTestContext context, long ms) {

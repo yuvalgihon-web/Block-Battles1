@@ -85,6 +85,7 @@ To build a `.jar` for your normal Minecraft install: `./gradlew build`, then cop
 | `src/gametest/` | An automated test that starts Minecraft, runs the commands and takes screenshots (`./gradlew runClientGameTest`). Not part of the mod `.jar`. |
 | `src/main/java/dev/lyricmod/LyricRecorder.java` | The `/lyrics record` tool: plays the song, records the song time at each **K** press, shows a live preview and writes the `.lrc` file. |
 | `src/main/resources/assets/lyricmod/lang/en_us.json` | The English name of the "Mark lyric line" key shown in the Controls menu. |
+| `src/main/java/dev/lyricmod/BidiText.java` | Right-to-left support (Hebrew, Arabic): decides the left-to-right drawing order of a line's words, so the first Hebrew word appears on the right. |
 | `src/main/java/dev/lyricmod/LyricTimeline.java` | Timing math only: which line is sung at a given time, when it ends, and when each of its words starts. |
 | `src/main/java/dev/lyricmod/SyncedLyricsDisplay.java` | Every frame, reads the song's playback time and draws the current line word by word (and the previous line fading out). |
 | `src/main/java/dev/lyricmod/LyricRenderer.java` | Hooks into world rendering every frame. Its `drawText` puts one piece of text in 3D: move to its position, rotate to face the camera, scale down, draw with the right transparency. |

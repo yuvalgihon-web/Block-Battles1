@@ -98,6 +98,12 @@ public final class SyncedLyricsDisplay {
 			return; // an empty line is a pause in the singing
 		}
 
+		// Right-to-left lines (Hebrew, Arabic): the first word goes on the RIGHT.
+		// BidiText tells us in which order to place the words from left to right.
+		List<String> texts = words.stream().map(LyricTimeline.TimedWord::text).toList();
+		boolean rightToLeft = BidiText.isRightToLeft(String.join(" ", texts));
+		int[] leftToRight = BidiText.visualWordOrder(texts, rightToLeft);
+
 		// Measure the whole line first so we can center it. Words that haven't
 		// been sung yet still take up their space, so the line doesn't jump around.
 		float spaceWidth = LyricRenderer.textWidth(" ");
@@ -107,14 +113,15 @@ public final class SyncedLyricsDisplay {
 		}
 
 		float x = -totalWidth / 2f;
-		for (LyricTimeline.TimedWord word : words) {
+		for (int wordIndex : leftToRight) {
+			LyricTimeline.TimedWord word = words.get(wordIndex);
 			float wordWidth = LyricRenderer.textWidth(word.text());
 			long sinceStart = positionMs - word.startMs();
 			if (sinceStart >= 0) {
 				float wordOpacity = Math.min(1f, (float) sinceStart / WORD_FADE_IN_MS);
 				// drawText centers on x, so pass the middle of the word.
 				LyricRenderer.drawText(context, anchor, word.text(), x + wordWidth / 2f,
-						wordOpacity * lineOpacity);
+						wordOpacity * lineOpacity, rightToLeft);
 			}
 			x += wordWidth + spaceWidth;
 		}

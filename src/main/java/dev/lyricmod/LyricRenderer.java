@@ -9,6 +9,7 @@ import net.fabricmc.fabric.api.client.rendering.v1.level.LevelRenderEvents;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.Font;
 import net.minecraft.client.renderer.state.level.CameraRenderState;
+import net.minecraft.client.resources.language.FormattedBidiReorder;
 import net.minecraft.network.chat.Component;
 import net.minecraft.util.FormattedCharSequence;
 import net.minecraft.util.LightCoordsUtil;
@@ -80,7 +81,8 @@ public final class LyricRenderer {
 		long now = nowMs();
 		ACTIVE.removeIf(line -> line.isFinished(now)); // forget faded-out lines
 		for (FloatingText line : ACTIVE) {
-			drawText(context, line.position(), line.text(), 0, line.opacity(now));
+			drawText(context, line.position(), line.text(), 0, line.opacity(now),
+					BidiText.isRightToLeft(line.text()));
 		}
 	}
 
@@ -97,8 +99,11 @@ public final class LyricRenderer {
 	 * @param xOffset  how far (in font pixels) the text's CENTER is moved sideways
 	 *                 from the anchor; used to place the words of a line next to each other
 	 * @param opacity  0 = invisible, 1 = fully visible
+	 * @param rightToLeft true if the text belongs to a right-to-left line (Hebrew, Arabic),
+	 *                 so punctuation like "," ends up on the correct side
 	 */
-	static void drawText(LevelRenderContext context, Vec3 position, String text, float xOffset, float opacity) {
+	static void drawText(LevelRenderContext context, Vec3 position, String text, float xOffset, float opacity,
+			boolean rightToLeft) {
 		// Very low alpha values can be treated as "fully opaque" by the
 		// text renderer (an old Minecraft quirk), so skip nearly-invisible
 		// frames instead of having the text flash at full brightness.
@@ -131,7 +136,9 @@ public final class LyricRenderer {
 
 		// 4. Submit the text, centered on xOffset: shift left by half its width
 		//    and up by half its height (both in font pixels).
-		FormattedCharSequence chars = Component.literal(text).getVisualOrderText();
+		// "Visual order" = the characters in the order they appear on screen
+		// (for Hebrew, right-to-left). Minecraft's FormattedBidiReorder does that.
+		FormattedCharSequence chars = FormattedBidiReorder.reorder(Component.literal(text), rightToLeft);
 		float x = xOffset - font.width(chars) / 2f;
 		float y = -font.lineHeight / 2f;
 		context.submitNodeCollector().submitText(
