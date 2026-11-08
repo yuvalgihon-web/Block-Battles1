@@ -81,5 +81,5 @@ To build a `.jar` for your normal Minecraft install: `./gradlew build`, then cop
 - **Step 2 (files):** done. Only `config/lyricmod/` is read; names with `/`, `\` or `..` and symbolic links are refused.
 - **Step 3 (sync):** done. Everything is computed from `SongPlayer.positionMs()` (the audio device's own playback time), so lyrics stay in sync through lag and pauses.
 - **Spotify mode (planned, after step 3):** Spotify plays the music; the mod reads the song and position from Spotify and downloads synced lyrics from LRCLIB. Only `LyricTimeline`/`SyncedLyricsDisplay` need a different time source.
-- **Step 4 (animation):** `FloatingText.opacity()` will grow into an animation that also returns position offset and scale, using easing curves.
+- **Step 4 (animation):** `SyncedLyricsDisplay` will place words around the player (scatter, drift, orbit, tilt, scale) with easing curves instead of one straight line.
 - **Step 5 (config):** the constants at the top of `LyricRenderer` (`TEXT_SCALE`, `TEXT_COLOR`) and `LyricsCommand` (`TEST_DISTANCE`) become config values.
