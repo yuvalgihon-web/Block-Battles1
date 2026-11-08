@@ -353,12 +353,13 @@ public class LyricTestCommandGameTest implements FabricClientGameTest {
 
 			// Out-of-range and wrong values are fixed, with messages.
 			Files.writeString(file, """
-					{ "style": "scatter", "textSize": 100, "color": "#FF8800", "gradientColor": "nope",
+					{ "style": "scatter", "textSize": 100, "color": "#FF8800", "gradientColor": "nope", "font": "comic",
 					  "scatter": { "tiltDegrees": 0 } }""");
 			java.util.List<String> problems = context.computeOnClient(client -> dev.lyricmod.LyricConfig.load());
 			dev.lyricmod.LyricConfig config = dev.lyricmod.LyricConfig.current;
-			check(problems.size() == 2, "two problems reported: " + problems);
+			check(problems.size() == 3, "three problems reported: " + problems);
 			check(config.textSize == 5f && config.gradientRgb == -1 && config.colorRgb == 0xFF8800, "fixed values");
+			check(config.smoothFont && config.font.equals("smooth"), "unknown font -> smooth");
 			check(config.scatter.tiltDegrees == 0 && config.scatter.distance == 5.5f, "missing values use defaults");
 			check(Files.readString(file).contains("\"orbitDegreesPerSecond\""), "missing settings written back");
 

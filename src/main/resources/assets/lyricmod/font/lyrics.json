@@ -1,0 +1,22 @@
+{
+	"providers": [
+		{
+			"type": "ttf",
+			"file": "lyricmod:poppins-bolditalic.ttf",
+			"size": 11,
+			"oversample": 6,
+			"shift": [0, 1]
+		},
+		{
+			"type": "ttf",
+			"file": "lyricmod:secularone-regular.ttf",
+			"size": 11,
+			"oversample": 6,
+			"shift": [0, 1]
+		},
+		{
+			"type": "reference",
+			"id": "minecraft:default"
+		}
+	]
+}

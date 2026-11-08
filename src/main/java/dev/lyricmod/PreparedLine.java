@@ -45,6 +45,12 @@ public final class PreparedLine {
 	private static Lyrics cachedLyrics;
 	private static final Map<Integer, PreparedLine> CACHE = new HashMap<>();
 
+	/** Forgets all prepared lines, e.g. after the font setting changed. */
+	public static void clearCache() {
+		cachedLyrics = null;
+		CACHE.clear();
+	}
+
 	/** Returns line {@code index} of {@code lyrics}, preparing it the first time. */
 	public static PreparedLine get(Lyrics lyrics, int index) {
 		if (lyrics != cachedLyrics) {

@@ -39,6 +39,7 @@ is not overwritten until you fix it.
 | --- | --- | --- |
 | `style` | `"scatter"` | `"scatter"` or `"line"`. |
 | `offsetMs` | `0` | Timing correction: positive = lyrics earlier. |
+| `font` | `"smooth"` | `"smooth"` (bold italic font: Poppins, with Secular One for Hebrew) or `"minecraft"` (the normal blocky font). |
 | `color` | `"#FFFFFF"` | Text color (`#RRGGBB`). |
 | `gradientColor` | `"#D7B8FF"` | Each line fades from `color` (first word) to this color (last word). `""` = off. |
 | `shadow` | `true` | Dark shadow behind the letters. |
@@ -141,6 +142,7 @@ To build a `.jar` for your normal Minecraft install: `./gradlew build`, then cop
 | `src/main/java/dev/lyricmod/Lyrics.java` | Plain data: the song's title, artist and lyric lines/words with their times. |
 | `src/main/java/dev/lyricmod/SongPlayer.java` | Plays the `.ogg` through OpenAL (Minecraft's audio library), follows the volume slider, pauses with the game, and reports the exact playback time. |
 | `src/main/resources/assets/lyricmod/example/` | The example song ("Twinkle, Twinkle, Little Star", public domain) copied to `config/lyricmod` on first start. |
+| `src/main/resources/assets/lyricmod/font/` | The smooth lyric font. `lyrics.json` tells Minecraft to use Poppins Bold Italic first, Secular One for Hebrew, then Minecraft's own font for anything else (like ♪). |
 | `src/gametest/` | An automated test that starts Minecraft, runs the commands and takes screenshots (`./gradlew runClientGameTest`). Not part of the mod `.jar`. |
 | `src/main/java/dev/lyricmod/LyricRecorder.java` | The `/lyrics record` tool: plays the song, records the song time at each **K** press, shows a live preview and writes the `.lrc` file. |
 | `src/main/resources/assets/lyricmod/lang/en_us.json` | The English name of the "Mark lyric line" key shown in the Controls menu. |
@@ -157,6 +159,12 @@ To build a `.jar` for your normal Minecraft install: `./gradlew build`, then cop
 | `src/main/java/dev/lyricmod/SyncedLyricsDisplay.java` | Every frame, reads the song's playback time and draws the current line word by word (and the previous line fading out). |
 | `src/main/java/dev/lyricmod/LyricRenderer.java` | Hooks into world rendering every frame. Its `drawText` puts one piece of text in 3D: move to its position, rotate to face the camera, scale down, draw with the right transparency. |
 
+## Fonts
+
+The smooth lyric font uses [Poppins](https://github.com/itfoundry/Poppins) Bold Italic and
+[Secular One](https://github.com/googlefonts/secular), both under the SIL Open Font License 1.1
+(license texts in `src/main/resources/assets/lyricmod/font/`).
+
 ## Design notes (for later steps)
 
 - **Client-only:** `environment: client` means the mod never loads on a server. Only the optional Spotify mode uses the internet (api.spotify.com, accounts.spotify.com, lrclib.net).
@@ -165,4 +173,5 @@ To build a `.jar` for your normal Minecraft install: `./gradlew build`, then cop
 - **Spotify mode:** done. `LyricRenderer` takes lyrics and time from `SpotifyMode` instead of `SongPlayer`; everything else is shared.
 - **Step 4 (animation):** done.
 - **Step 5 (config):** done. Every tuning number is a field in `LyricConfig`; adding a setting = adding a field (plus a range check in `validate`).
-- **Next:** the "Now Playing" title card and the karaoke bar at the top of the screen, and a smoother custom font.
+- **Smooth font:** done (`font` setting).
+- **Next:** the "Now Playing" title card and the karaoke bar at the top of the screen.

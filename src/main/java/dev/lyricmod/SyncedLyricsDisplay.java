@@ -102,7 +102,7 @@ public final class SyncedLyricsDisplay {
 
 		// Measure the whole line first so we can center it. Words that haven't
 		// been sung yet still take up their space, so the line doesn't jump around.
-		float spaceWidth = LyricRenderer.textWidth(" ");
+		float spaceWidth = LyricRenderer.textWidth(LyricRenderer.prepare(" ", false)); // in the lyric font
 		float totalWidth = -spaceWidth;
 		for (float width : prepared.widths) {
 			totalWidth += width + spaceWidth;

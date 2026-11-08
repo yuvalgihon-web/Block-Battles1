@@ -41,6 +41,9 @@ public final class LyricConfig {
 	/** If set, each line fades from {@link #color} (first word) to this color (last word). "" = off. */
 	public String gradientColor = "#D7B8FF";
 
+	/** "smooth" (the mod's bold italic font) or "minecraft" (the normal blocky font). */
+	public String font = "smooth";
+
 	/** Dark shadow behind the letters, makes them easier to read. */
 	public boolean shadow = true;
 
@@ -95,6 +98,7 @@ public final class LyricConfig {
 
 	/** {@link #style}, {@link #color} and {@link #gradientColor} as numbers/enum. */
 	public transient LyricStyle styleValue = LyricStyle.SCATTER;
+	public transient boolean smoothFont = true;
 	public transient int colorRgb = 0xFFFFFF;
 	public transient int gradientRgb = -1; // -1 = no gradient
 
@@ -184,6 +188,14 @@ public final class LyricConfig {
 			styleValue = LyricStyle.SCATTER;
 		}
 		style = styleValue.name().toLowerCase(Locale.ROOT);
+
+		if ("smooth".equalsIgnoreCase(font) || "minecraft".equalsIgnoreCase(font)) {
+			font = font.toLowerCase(Locale.ROOT);
+		} else {
+			messages.add("font \"" + font + "\" is unknown (use \"smooth\" or \"minecraft\"), using \"smooth\"");
+			font = "smooth";
+		}
+		smoothFont = font.equals("smooth");
 
 		Integer rgb = parseColor(color);
 		if (rgb == null) {

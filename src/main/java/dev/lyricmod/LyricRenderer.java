@@ -12,6 +12,8 @@ import net.minecraft.client.gui.Font;
 import net.minecraft.client.renderer.state.level.CameraRenderState;
 import net.minecraft.client.resources.language.FormattedBidiReorder;
 import net.minecraft.network.chat.Component;
+import net.minecraft.network.chat.FontDescription;
+import net.minecraft.resources.Identifier;
 import net.minecraft.util.FormattedCharSequence;
 import net.minecraft.util.LightCoordsUtil;
 import net.minecraft.util.Util;
@@ -103,6 +105,14 @@ public final class LyricRenderer {
 	}
 
 	/**
+	 * The mod's smooth font, defined in assets/lyricmod/font/lyrics.json:
+	 * Poppins Bold Italic for Latin letters, Secular One for Hebrew, and
+	 * Minecraft's normal font for anything else (like ♪).
+	 */
+	private static final FontDescription LYRIC_FONT =
+			new FontDescription.Resource(Identifier.fromNamespaceAndPath(LyricModClient.MOD_ID, "lyrics"));
+
+	/**
 	 * Turns text into "visual order": the characters in the order they appear
 	 * on screen (for Hebrew, right-to-left). Minecraft's FormattedBidiReorder
 	 * does the work. The result can be drawn many times.
@@ -111,7 +121,12 @@ public final class LyricRenderer {
 	 *                    punctuation like "," ends up on the correct side
 	 */
 	static FormattedCharSequence prepare(String text, boolean rightToLeft) {
-		return FormattedBidiReorder.reorder(Component.literal(text), rightToLeft);
+		Component component = Component.literal(text);
+		if (LyricConfig.current.smoothFont) {
+			// The "font" part of a text's style chooses which font draws it.
+			component = Component.literal(text).withStyle(style -> style.withFont(LYRIC_FONT));
+		}
+		return FormattedBidiReorder.reorder(component, rightToLeft);
 	}
 
 	/**

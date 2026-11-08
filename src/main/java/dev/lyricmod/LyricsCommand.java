@@ -239,6 +239,7 @@ public final class LyricsCommand {
 	private static int runReload(FabricClientCommandSource source) {
 		List<String> problems = LyricConfig.load();
 		ScatterAnimation.reset(); // new sizes/distances apply to lines from now on
+		PreparedLine.clearCache(); // the font may have changed
 		for (String problem : problems) {
 			source.sendError(Component.literal(problem));
 		}
