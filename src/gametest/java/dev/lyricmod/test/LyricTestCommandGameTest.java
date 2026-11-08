@@ -1,10 +1,12 @@
 package dev.lyricmod.test;
 
 import java.io.IOException;
-
+import java.nio.file.Files;
 import java.util.List;
 
+import com.mojang.blaze3d.platform.InputConstants;
 import dev.lyricmod.LrcParser;
+import dev.lyricmod.LyricRecorder;
 import dev.lyricmod.LyricFiles;
 import dev.lyricmod.LyricTimeline;
 import dev.lyricmod.Lyrics;
@@ -38,6 +40,7 @@ public class LyricTestCommandGameTest implements FabricClientGameTest {
 			testTimeline();
 			testPlaySong(context);
 			testSyncedLyrics(context);
+			testRecorder(context);
 		}
 	}
 
@@ -149,6 +152,47 @@ public class LyricTestCommandGameTest implements FabricClientGameTest {
 		context.takeScreenshot("step3-8.4s-full-line");
 
 		command(context, "lyrics stop");
+	}
+
+	/** /lyrics record: press K at known song times and check the saved .lrc. */
+	private void testRecorder(ClientGameTestContext context) {
+		try {
+			Files.writeString(LyricFiles.folder().resolve("tapped.txt"),
+					"[ar:Test Artist]\nFirst line\n\nSecond line\nThird line\n");
+			Files.copy(LyricFiles.folder().resolve("example.ogg"), LyricFiles.folder().resolve("tapped.ogg"));
+		} catch (IOException e) {
+			throw new AssertionError(e);
+		}
+
+		command(context, "lyrics record tapped");
+		context.waitFor(client -> SongPlayer.isPlaying(), 100);
+		check(LyricRecorder.isRecording(), "should be recording");
+
+		long[] pressAt = {1000, 5000, 9000, 12000}; // 3 lines + the end
+		for (long time : pressAt) {
+			waitForSongTime(context, time);
+			context.getInput().pressKey(InputConstants.KEY_K);
+			if (time == 5000) {
+				context.waitTicks(3);
+				context.takeScreenshot("record-after-second-press");
+			}
+		}
+		context.waitTicks(3);
+		check(!LyricRecorder.isRecording(), "recording should be finished");
+		context.takeScreenshot("record-saved");
+
+		try {
+			Lyrics saved = LyricFiles.loadLyrics("tapped");
+			check(saved.title().equals("tapped") && saved.artist().equals("Test Artist"), "tags: " + saved);
+			check(saved.lines().size() == 4, "3 lines + end marker: " + saved.lines());
+			check(saved.lines().get(1).text().equals("Second line"), "line text: " + saved.lines());
+			for (int i = 0; i < 4; i++) {
+				long diff = saved.lines().get(i).timeMs() - pressAt[i];
+				check(diff >= 0 && diff < 250, "line " + i + " time off by " + diff + " ms");
+			}
+		} catch (IOException e) {
+			throw new AssertionError(e);
+		}
 	}
 
 	private static void waitForSongTime(ClientGameTestContext context, long ms) {

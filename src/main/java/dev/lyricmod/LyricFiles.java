@@ -62,6 +62,12 @@ public final class LyricFiles {
 					Then in game type:  /lyrics play mysong
 					Other commands:     /lyrics list    /lyrics stop
 
+					No .lrc file? Make one by tapping along:
+					  1. Put the plain lyrics in mysong.txt (one line per line).
+					  2. Type /lyrics record mysong
+					  3. Press K each time a line starts; after the last line press K
+					     once more. mysong.lrc is saved for you.
+
 					To convert an .mp3 to .ogg you can use a free tool such as Audacity
 					(File > Export > Export as OGG).
 					""", StandardCharsets.UTF_8);
@@ -93,6 +99,26 @@ public final class LyricFiles {
 					.map(file -> file.substring(0, file.length() - ".ogg".length()))
 					.filter(name -> SAFE_NAME.matcher(name).matches())
 					.filter(name -> Files.isRegularFile(folder().resolve(name + ".lrc")))
+					.sorted(String.CASE_INSENSITIVE_ORDER)
+					.forEach(names::add);
+		} catch (IOException e) {
+			// Folder missing or unreadable: just report no songs.
+		}
+		return names;
+	}
+
+	/**
+	 * Lists the songs that have an .ogg and a .txt file (plain lyrics), which
+	 * can be timed with /lyrics record.
+	 */
+	public static List<String> listRecordable() {
+		List<String> names = new ArrayList<>();
+		try (Stream<Path> files = Files.list(folder())) {
+			files.map(path -> path.getFileName().toString())
+					.filter(file -> file.endsWith(".txt") && !file.equals("README.txt"))
+					.map(file -> file.substring(0, file.length() - ".txt".length()))
+					.filter(name -> SAFE_NAME.matcher(name).matches())
+					.filter(name -> Files.isRegularFile(folder().resolve(name + ".ogg")))
 					.sorted(String.CASE_INSENSITIVE_ORDER)
 					.forEach(names::add);
 		} catch (IOException e) {

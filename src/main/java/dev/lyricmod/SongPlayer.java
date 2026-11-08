@@ -177,6 +177,16 @@ public final class SongPlayer {
 		pausedByGame = false;
 	}
 
+	/**
+	 * Replaces the lyrics of the playing song. Used by the recorder to show
+	 * the lines marked so far while you record.
+	 */
+	public static void setLyrics(Lyrics newLyrics) {
+		if (source != 0) {
+			lyrics = newLyrics;
+		}
+	}
+
 	/** True while a song is loaded (playing or paused). */
 	public static boolean isPlaying() {
 		return source != 0;

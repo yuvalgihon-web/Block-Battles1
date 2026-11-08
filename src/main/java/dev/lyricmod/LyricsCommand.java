@@ -20,6 +20,7 @@ import net.minecraft.world.phys.Vec3;
  *   /lyrics play <name>   play config/lyricmod/<name>.ogg with <name>.lrc
  *   /lyrics stop          stop the current song
  *   /lyrics list          list the songs in config/lyricmod
+ *   /lyrics record <name> make <name>.lrc by pressing a key at each line (see LyricRecorder)
  *
  * "Client-side" means the command runs only inside your own game. It is never
  * sent to the server, so it works in singleplayer and on any server, even one
@@ -54,6 +55,12 @@ public final class LyricsCommand {
 														SharedSuggestionProvider.suggest(LyricFiles.listSongs(), builder))
 												.executes(context -> runPlay(context.getSource(),
 														StringArgumentType.getString(context, "name")))))
+								.then(ClientCommands.literal("record")
+										.then(ClientCommands.argument("name", StringArgumentType.greedyString())
+												.suggests((context, builder) ->
+														SharedSuggestionProvider.suggest(LyricFiles.listRecordable(), builder))
+												.executes(context -> runRecord(context.getSource(),
+														StringArgumentType.getString(context, "name")))))
 								.then(ClientCommands.literal("stop")
 										.executes(context -> runStop(context.getSource())))
 								.then(ClientCommands.literal("list")
@@ -87,6 +94,7 @@ public final class LyricsCommand {
 			return 0;
 		}
 
+		LyricRecorder.cancel(); // playing a song stops any recording
 		source.sendFeedback(Component.literal("Loading " + name + "..."));
 		SongPlayer.play(oggFile, lyrics,
 				() -> {
@@ -101,8 +109,26 @@ public final class LyricsCommand {
 		return 1;
 	}
 
+	/** /lyrics record <name> */
+	private static int runRecord(FabricClientCommandSource source, String rawName) {
+		try {
+			LyricRecorder.start(rawName.strip());
+		} catch (IOException e) {
+			source.sendError(Component.literal(e.getMessage()));
+			return 0;
+		}
+		source.sendFeedback(Component.literal("Loading " + rawName.strip() + "..."));
+		return 1;
+	}
+
 	/** /lyrics stop */
 	private static int runStop(FabricClientCommandSource source) {
+		if (LyricRecorder.isRecording()) {
+			LyricRecorder.cancel();
+			SongPlayer.stop();
+			source.sendFeedback(Component.literal("Recording cancelled, nothing saved."));
+			return 1;
+		}
 		if (!SongPlayer.isPlaying()) {
 			source.sendFeedback(Component.literal("Nothing is playing."));
 			return 1;

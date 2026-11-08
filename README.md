@@ -11,12 +11,24 @@ world around you, synced to the music.
 | `/lyrics play <name>` | Plays `config/lyricmod/<name>.ogg` and shows the lyrics from `<name>.lrc` in sync. Press Tab to see the song names. |
 | `/lyrics stop` | Stops the song. |
 | `/lyrics list` | Lists the songs in `config/lyricmod`. |
+| `/lyrics record <name>` | Makes `<name>.lrc` from `<name>.ogg` + `<name>.txt` by pressing **K** when each line starts (see below). |
 
 The first time the game starts with the mod, it creates `.minecraft/config/lyricmod/` with a
 `README.txt` and an example song, so you can try `/lyrics play example` right away.
 The song's volume follows the **Jukebox/Note Blocks** slider in Music & Sounds.
 Each lyric line appears in front of you when it starts and stays at that spot; its words fade in
 one by one as they're sung, and the previous line fades out.
+
+### No .lrc file? Record one in game
+
+1. Put the plain lyrics in `config/lyricmod/mysong.txt`, one lyric line per line
+   (blank lines are ignored; you can add `[ar:Artist]` / `[ti:Title]` lines at the top).
+2. Type `/lyrics record mysong`. The song starts and the text above your hotbar shows the next line.
+3. Press **K** the moment each line starts. The line appears right away, so you see your timing.
+   (The key can be changed in *Options → Controls → Miscellaneous → Mark lyric line*.)
+4. After the last line, press **K** once more when the singing ends. `mysong.lrc` is saved
+   (an existing one is kept as `mysong.lrc.bak`). If the song ends first, the marked lines are saved.
+   `/lyrics stop` cancels without saving.
 
 ### Adding your own songs
 
@@ -71,6 +83,8 @@ To build a `.jar` for your normal Minecraft install: `./gradlew build`, then cop
 | `src/main/java/dev/lyricmod/SongPlayer.java` | Plays the `.ogg` through OpenAL (Minecraft's audio library), follows the volume slider, pauses with the game, and reports the exact playback time. |
 | `src/main/resources/assets/lyricmod/example/` | The example song ("Twinkle, Twinkle, Little Star", public domain) copied to `config/lyricmod` on first start. |
 | `src/gametest/` | An automated test that starts Minecraft, runs the commands and takes screenshots (`./gradlew runClientGameTest`). Not part of the mod `.jar`. |
+| `src/main/java/dev/lyricmod/LyricRecorder.java` | The `/lyrics record` tool: plays the song, records the song time at each **K** press, shows a live preview and writes the `.lrc` file. |
+| `src/main/resources/assets/lyricmod/lang/en_us.json` | The English name of the "Mark lyric line" key shown in the Controls menu. |
 | `src/main/java/dev/lyricmod/LyricTimeline.java` | Timing math only: which line is sung at a given time, when it ends, and when each of its words starts. |
 | `src/main/java/dev/lyricmod/SyncedLyricsDisplay.java` | Every frame, reads the song's playback time and draws the current line word by word (and the previous line fading out). |
 | `src/main/java/dev/lyricmod/LyricRenderer.java` | Hooks into world rendering every frame. Its `drawText` puts one piece of text in 3D: move to its position, rotate to face the camera, scale down, draw with the right transparency. |

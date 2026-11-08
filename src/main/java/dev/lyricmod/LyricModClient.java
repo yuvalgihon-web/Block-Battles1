@@ -28,13 +28,19 @@ public class LyricModClient implements ClientModInitializer {
 		LyricFiles.createFolderIfMissing();
 		LyricsCommand.register();
 		LyricRenderer.register();
+		LyricRecorder.registerKey();
 
 		// 20 times per second: keep the song's volume/pause state up to date.
+		// (The recorder runs first, so it notices the song's end before SongPlayer cleans up.)
+		ClientTickEvents.END_CLIENT_TICK.register(LyricRecorder::tick);
 		ClientTickEvents.END_CLIENT_TICK.register(SongPlayer::tick);
 
 		// Stop the music when leaving a world or server, and when the game closes.
 		// (execute = "do it on the game thread", where the audio code must run.)
-		ClientPlayConnectionEvents.DISCONNECT.register((handler, client) -> client.execute(SongPlayer::stop));
+		ClientPlayConnectionEvents.DISCONNECT.register((handler, client) -> client.execute(() -> {
+			LyricRecorder.cancel();
+			SongPlayer.stop();
+		}));
 		ClientLifecycleEvents.CLIENT_STOPPING.register(client -> SongPlayer.stop());
 
 		LOGGER.info("Lyric Mod loaded. Songs folder: {}", LyricFiles.folder());
