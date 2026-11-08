@@ -1,6 +1,6 @@
 package dev.lyricmod;
 
-import net.minecraft.util.math.Vec3d;
+import net.minecraft.world.phys.Vec3;
 
 /**
  * One line of text placed somewhere in the world.
@@ -19,7 +19,7 @@ import net.minecraft.util.math.Vec3d;
  * @param position    the point in the world (x, y, z) where the text's center sits
  * @param startTimeMs when the line appeared, in milliseconds (see LyricRenderer#nowMs)
  */
-public record FloatingText(String text, Vec3d position, long startTimeMs) {
+public record FloatingText(String text, Vec3 position, long startTimeMs) {
 
 	/** How long the fade-in takes. */
 	public static final long FADE_IN_MS = 1000;

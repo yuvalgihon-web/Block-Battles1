@@ -3,16 +3,17 @@ package dev.lyricmod;
 import java.util.ArrayList;
 import java.util.List;
 
-import net.fabricmc.fabric.api.client.rendering.v1.WorldRenderContext;
-import net.fabricmc.fabric.api.client.rendering.v1.WorldRenderEvents;
-import net.minecraft.client.MinecraftClient;
-import net.minecraft.client.font.TextRenderer;
-import net.minecraft.client.render.Camera;
-import net.minecraft.client.render.LightmapTextureManager;
-import net.minecraft.client.render.VertexConsumerProvider;
-import net.minecraft.client.util.math.MatrixStack;
+import com.mojang.blaze3d.vertex.PoseStack;
+import net.fabricmc.fabric.api.client.rendering.v1.level.LevelRenderContext;
+import net.fabricmc.fabric.api.client.rendering.v1.level.LevelRenderEvents;
+import net.minecraft.client.Minecraft;
+import net.minecraft.client.gui.Font;
+import net.minecraft.client.renderer.state.level.CameraRenderState;
+import net.minecraft.network.chat.Component;
+import net.minecraft.util.FormattedCharSequence;
+import net.minecraft.util.LightCoordsUtil;
 import net.minecraft.util.Util;
-import net.minecraft.util.math.Vec3d;
+import net.minecraft.world.phys.Vec3;
 
 /**
  * Draws every active {@link FloatingText} in the 3D world, once per frame.
@@ -24,22 +25,21 @@ import net.minecraft.util.math.Vec3d;
  *     (this trick is called "billboarding"; name tags work the same way).
  *  3. Font pixels are huge in world units (1 pixel = 1 block!), so we scale
  *     everything down, and flip Y because text is drawn top-to-bottom.
- *  4. We ask the font renderer to draw the string at that spot.
+ *  4. We "submit" the text: since Minecraft 1.21.9 we don't draw directly,
+ *     we hand Minecraft a description of what to draw and it draws everything
+ *     together later in the frame.
  */
 public final class LyricRenderer {
 
 	/**
-	 * Size of one font pixel in blocks. 0.025 is what name tags use; the
-	 * Minecraft font is 9 pixels tall, so a line is about 0.23 blocks high at 0.025.
+	 * Size of one font pixel in blocks. Name tags use 0.025; the Minecraft
+	 * font is 9 pixels tall, so a name tag line is about 0.23 blocks high.
 	 * We use a bit less so a whole line fits on screen. (Step 5: from config.)
 	 */
 	private static final float TEXT_SCALE = 0.02f;
 
 	/** Text color as 0xRRGGBB (white). Alpha is added per frame. (Step 5: from config.) */
 	private static final int TEXT_COLOR = 0xFFFFFF;
-
-	/** "Full brightness" light value, so the text glows even at night or in caves. */
-	private static final int FULL_BRIGHT = LightmapTextureManager.MAX_LIGHT_COORDINATE;
 
 	/** The lines currently on screen. */
 	private static final List<FloatingText> ACTIVE = new ArrayList<>();
@@ -49,9 +49,9 @@ public final class LyricRenderer {
 
 	/** Hooks our {@link #render} method into the game's world rendering. */
 	public static void register() {
-		// AFTER_ENTITIES fires each frame after mobs/players are drawn, which is
-		// a good moment to draw our own see-through-ish things into the world.
-		WorldRenderEvents.AFTER_ENTITIES.register(LyricRenderer::render);
+		// COLLECT_SUBMITS fires once per frame while Minecraft gathers
+		// everything it will draw in the world: the right moment to add our text.
+		LevelRenderEvents.COLLECT_SUBMITS.register(LyricRenderer::render);
 	}
 
 	/** Adds a line to be drawn. Called from the command (always on the game thread). */
@@ -64,10 +64,10 @@ public final class LyricRenderer {
 	 * same clock. In step 3 we'll switch to the song's playback position.
 	 */
 	public static long nowMs() {
-		return Util.getMeasuringTimeMs();
+		return Util.getMillis();
 	}
 
-	private static void render(WorldRenderContext context) {
+	private static void render(LevelRenderContext context) {
 		if (ACTIVE.isEmpty()) {
 			return; // Nothing to draw: do no work at all.
 		}
@@ -77,26 +77,20 @@ public final class LyricRenderer {
 		// Forget lines that have completely faded out.
 		ACTIVE.removeIf(line -> line.isFinished(now));
 
-		MinecraftClient client = MinecraftClient.getInstance();
-		TextRenderer font = client.textRenderer;
-		Camera camera = context.camera();
-		Vec3d cameraPos = camera.getPos();
+		Font font = Minecraft.getInstance().font;
+		CameraRenderState camera = context.levelState().cameraRenderState;
+		Vec3 cameraPos = camera.pos;
 
-		// A "vertex consumer provider" collects the shapes we want to draw and
-		// sends them to the graphics card when we call draw() at the end.
-		VertexConsumerProvider.Immediate buffers = client.getBufferBuilders().getEntityVertexConsumers();
-
-		// A MatrixStack keeps track of moves/rotations/scales. At this point
-		// in the frame the camera's rotation is already applied by the game,
-		// so we start from a fresh (identity) stack in camera-relative space,
-		// the same way Minecraft draws entities.
-		MatrixStack matrices = new MatrixStack();
+		// A PoseStack keeps track of moves/rotations/scales ("poses").
+		// push/pop saves and restores it, so one line's changes don't leak
+		// into the next line or into the rest of the game's rendering.
+		PoseStack poses = context.poseStack();
 
 		for (FloatingText line : ACTIVE) {
 			float opacity = line.opacity(now);
 
-			// The font renderer treats an alpha below 4 (out of 255) as
-			// "fully opaque" (an old Minecraft quirk), so skip nearly-invisible
+			// Very low alpha values can be treated as "fully opaque" by the
+			// text renderer (an old Minecraft quirk), so skip nearly-invisible
 			// frames instead of having the text flash at full brightness.
 			int alpha = Math.round(opacity * 255);
 			if (alpha < 5) {
@@ -106,38 +100,37 @@ public final class LyricRenderer {
 			// Color as 0xAARRGGBB: put alpha in the top 8 bits.
 			int argb = (alpha << 24) | TEXT_COLOR;
 
-			matrices.push(); // Save the stack so our changes don't leak to the next line.
+			poses.pushPose();
 
 			// 1. Move from the camera to the text position.
-			Vec3d p = line.position();
-			matrices.translate(p.x - cameraPos.x, p.y - cameraPos.y, p.z - cameraPos.z);
+			Vec3 p = line.position();
+			poses.translate(p.x - cameraPos.x, p.y - cameraPos.y, p.z - cameraPos.z);
 
 			// 2. Face the camera.
-			matrices.multiply(camera.getRotation());
+			poses.rotate(camera.orientation);
 
 			// 3. Shrink font pixels down to world size; negative Y flips the
-			//    text right side up. (If you ever see the text mirrored,
-			//    make the first number negative, as in older MC versions.)
-			matrices.scale(TEXT_SCALE, -TEXT_SCALE, TEXT_SCALE);
+			//    text right side up.
+			poses.scale(TEXT_SCALE, -TEXT_SCALE, TEXT_SCALE);
 
-			// 4. Draw, centered: shift left by half the text's width (in pixels).
-			float x = -font.getWidth(line.text()) / 2f;
-			font.draw(
-					line.text(),
-					x, 0,                               // position (pixels) after our transforms
-					argb,                               // color with alpha for the fade
-					true,                               // drop shadow, easier to read
-					matrices.peek().getPositionMatrix(),
-					buffers,
-					TextRenderer.TextLayerType.NORMAL,  // hidden behind blocks, like real objects
-					0,                                  // background color (0 = none)
-					FULL_BRIGHT
+			// 4. Submit the text, centered: shift left by half its width and
+			//    up by half its height (both in font pixels).
+			FormattedCharSequence text = Component.literal(line.text()).getVisualOrderText();
+			float x = -font.width(text) / 2f;
+			float y = -font.lineHeight / 2f;
+			context.submitNodeCollector().submitText(
+					poses,
+					x, y,
+					text,
+					true,                          // drop shadow, easier to read
+					Font.DisplayMode.NORMAL,       // hidden behind blocks, like real objects
+					LightCoordsUtil.FULL_BRIGHT,   // glow even at night or in caves
+					argb,                          // color with alpha for the fade
+					0,                             // background color (0 = none)
+					0                              // outline color (0 = none)
 			);
 
-			matrices.pop(); // Undo this line's transforms.
+			poses.popPose();
 		}
-
-		// Actually send everything to the GPU.
-		buffers.draw();
 	}
 }

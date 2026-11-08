@@ -1,4 +1,4 @@
-# Lyric Mod (Fabric, Minecraft 1.21.1)
+# Lyric Mod (Fabric, Minecraft 26.3)
 
 A client-side Fabric mod that will play a song and show its lyrics floating in the
 world around you, synced to the music.
@@ -8,7 +8,7 @@ always facing the camera, fading in over 1 second (then fading out after a few s
 
 ## Running it
 
-You need **Java 21** (`java -version`). Then:
+You need **Java 25** (`java -version`). Then:
 
 ```bash
 ./gradlew runClient
@@ -25,8 +25,8 @@ To build a `.jar` for your normal Minecraft install: `./gradlew build`, then cop
 | File | Purpose |
 | --- | --- |
 | `settings.gradle` | Tells Gradle where to find the Fabric Loom plugin and names the project. |
-| `gradle.properties` | All version numbers (Minecraft, Yarn mappings, Fabric Loader, Fabric API, Loom) in one place. |
-| `build.gradle` | The build script: applies Loom, declares dependencies, sets Java 21, fills the version into `fabric.mod.json`. |
+| `gradle.properties` | All version numbers (Minecraft, Fabric Loader, Fabric API, Loom) in one place. |
+| `build.gradle` | The build script: applies Loom, declares dependencies, sets Java 25, fills the version into `fabric.mod.json`. |
 | `gradlew`, `gradlew.bat`, `gradle/wrapper/` | The Gradle Wrapper: downloads the right Gradle version automatically, so you don't install Gradle yourself. |
 | `src/main/resources/fabric.mod.json` | The mod's "ID card" read by Fabric Loader: id, name, `"environment": "client"`, the entry point class, and dependencies. |
 | `src/main/java/dev/lyricmod/LyricModClient.java` | Entry point. Fabric calls it once at startup; it registers the command and the renderer. |

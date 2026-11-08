@@ -1,11 +1,11 @@
 package dev.lyricmod;
 
-import net.fabricmc.fabric.api.client.command.v2.ClientCommandManager;
 import net.fabricmc.fabric.api.client.command.v2.ClientCommandRegistrationCallback;
+import net.fabricmc.fabric.api.client.command.v2.ClientCommands;
 import net.fabricmc.fabric.api.client.command.v2.FabricClientCommandSource;
-import net.minecraft.client.network.ClientPlayerEntity;
-import net.minecraft.text.Text;
-import net.minecraft.util.math.Vec3d;
+import net.minecraft.client.player.LocalPlayer;
+import net.minecraft.network.chat.Component;
+import net.minecraft.world.phys.Vec3;
 
 /**
  * Registers the client-side command {@code /lyrics}.
@@ -31,10 +31,10 @@ public final class LyricsCommand {
 
 	public static void register() {
 		// Fabric calls this lambda whenever the client builds its command list.
-		ClientCommandRegistrationCallback.EVENT.register((dispatcher, registryAccess) ->
+		ClientCommandRegistrationCallback.EVENT.register((dispatcher, buildContext) ->
 				dispatcher.register(
-						ClientCommandManager.literal("lyrics")
-								.then(ClientCommandManager.literal("test")
+						ClientCommands.literal("lyrics")
+								.then(ClientCommands.literal("test")
 										.executes(context -> runTest(context.getSource())))
 				)
 		);
@@ -42,14 +42,14 @@ public final class LyricsCommand {
 
 	/** Runs when the player types /lyrics test. Returns 1 to mean "success". */
 	private static int runTest(FabricClientCommandSource source) {
-		ClientPlayerEntity player = source.getPlayer();
+		LocalPlayer player = source.getPlayer();
 
 		// Where are the player's eyes, and which way are they looking?
-		// getRotationVec gives a direction of length 1; multiplying by 3
-		// gives a point 3 blocks along that direction.
-		Vec3d eyes = player.getEyePos();
-		Vec3d lookDirection = player.getRotationVec(1.0f);
-		Vec3d position = eyes.add(lookDirection.multiply(TEST_DISTANCE));
+		// getLookAngle gives a direction of length 1; scaling it by 4 gives a
+		// point 4 blocks along that direction.
+		Vec3 eyes = player.getEyePosition();
+		Vec3 lookDirection = player.getLookAngle();
+		Vec3 position = eyes.add(lookDirection.scale(TEST_DISTANCE));
 
 		// Hand the line to the renderer, which starts drawing it next frame.
 		LyricRenderer.show(new FloatingText(
@@ -58,7 +58,7 @@ public final class LyricsCommand {
 				LyricRenderer.nowMs()
 		));
 
-		source.sendFeedback(Text.literal("Showing a test lyric line."));
+		source.sendFeedback(Component.literal("Showing a test lyric line."));
 		return 1;
 	}
 }
