@@ -6,6 +6,7 @@ import java.util.List;
 
 import com.mojang.blaze3d.platform.InputConstants;
 import dev.lyricmod.BidiText;
+import dev.lyricmod.Easing;
 import dev.lyricmod.LrcParser;
 import dev.lyricmod.LyricRecorder;
 import dev.lyricmod.Lrclib;
@@ -39,6 +40,7 @@ public class LyricTestCommandGameTest implements FabricClientGameTest {
 			});
 			context.waitTicks(5);
 
+			command(context, "lyrics style line"); // the step 3 tests below use the LINE style
 			testFloatingText(context);
 			testFiles();
 			testTimeline();
@@ -47,6 +49,7 @@ public class LyricTestCommandGameTest implements FabricClientGameTest {
 			testRecorder(context);
 			testHebrew(context);
 			testSpotifyParts(context);
+			testScatter(context);
 		}
 	}
 
@@ -278,6 +281,54 @@ public class LyricTestCommandGameTest implements FabricClientGameTest {
 		command(context, "lyrics spotify login");
 		context.waitTicks(2);
 		context.takeScreenshot("spotify-login-link");
+	}
+
+	/** Step 4: easing curves and the SCATTER style. */
+	private void testScatter(ClientGameTestContext context) {
+		for (float t : new float[] {0f, 1f}) {
+			check(Math.abs(Easing.outCubic(t) - t) < 1e-5 && Math.abs(Easing.inCubic(t) - t) < 1e-5
+					&& Math.abs(Easing.outBack(t) - t) < 1e-5 && Math.abs(Easing.inOutSine(t) - t) < 1e-5,
+					"easings start at 0 and end at 1");
+		}
+		check(Easing.outBack(0.7f) > 1f, "outBack overshoots");
+		check(Easing.outCubic(0.5f) > 0.5f && Easing.inCubic(0.5f) < 0.5f, "out is fast first, in is slow first");
+		check(Easing.outCubic(2f) == 1f && Easing.outCubic(-1f) == 0f, "clamped");
+
+		command(context, "lyrics style scatter");
+		command(context, "lyrics play example");
+		context.waitFor(client -> SongPlayer.isPlaying(), 100);
+		waitForSongTime(context, 1300);
+		context.takeScreenshot("step4-1.3s-first-word-popping");
+		waitForSongTime(context, 4300);
+		context.takeScreenshot("step4-4.3s-full-line");
+		waitForSongTime(context, 5250);
+		context.takeScreenshot("step4-5.25s-old-line-leaving");
+		context.runOnClient(client -> client.player.setYRot(40));
+		context.waitTicks(2);
+		context.takeScreenshot("step4-turned-right");
+		context.runOnClient(client -> client.player.setYRot(0));
+		waitForSongTime(context, 8600);
+		context.takeScreenshot("step4-8.6s-second-line");
+		command(context, "lyrics stop");
+
+		// A real song's lyrics (from LRCLIB, downloaded in testSpotifyParts) with the example tune.
+		try {
+			Files.copy(Lrclib.cacheFile("4u7EnebtmKWzUH433cf5Qv"), LyricFiles.folder().resolve("queen.lrc"));
+			Files.copy(LyricFiles.folder().resolve("example.ogg"), LyricFiles.folder().resolve("queen.ogg"));
+		} catch (IOException e) {
+			throw new AssertionError(e);
+		}
+		command(context, "lyrics play queen");
+		context.waitFor(client -> SongPlayer.isPlaying(), 100);
+		waitForSongTime(context, 11500);
+		context.takeScreenshot("step4-real-lyrics");
+		command(context, "lyrics stop");
+
+		command(context, "lyrics play hebrew");
+		context.waitFor(client -> SongPlayer.isPlaying(), 100);
+		waitForSongTime(context, 7800);
+		context.takeScreenshot("step4-hebrew-scatter");
+		command(context, "lyrics stop");
 	}
 
 	private static void waitForSongTime(ClientGameTestContext context, long ms) {

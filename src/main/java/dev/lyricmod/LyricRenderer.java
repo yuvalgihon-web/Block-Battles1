@@ -4,6 +4,7 @@ import java.util.ArrayList;
 import java.util.List;
 
 import com.mojang.blaze3d.vertex.PoseStack;
+import com.mojang.math.Axis;
 import net.fabricmc.fabric.api.client.rendering.v1.level.LevelRenderContext;
 import net.fabricmc.fabric.api.client.rendering.v1.level.LevelRenderEvents;
 import net.minecraft.client.Minecraft;
@@ -109,6 +110,17 @@ public final class LyricRenderer {
 	 */
 	static void drawText(LevelRenderContext context, Vec3 position, String text, float xOffset, float opacity,
 			boolean rightToLeft) {
+		drawText(context, position, text, xOffset, opacity, rightToLeft, 1f, 0f);
+	}
+
+	/**
+	 * Same as above, plus:
+	 *
+	 * @param scale       size multiplier (1 = normal floating text)
+	 * @param tiltDegrees rotation around the line of sight (positive = tilted counter-clockwise)
+	 */
+	static void drawText(LevelRenderContext context, Vec3 position, String text, float xOffset, float opacity,
+			boolean rightToLeft, float scale, float tiltDegrees) {
 		// Very low alpha values can be treated as "fully opaque" by the
 		// text renderer (an old Minecraft quirk), so skip nearly-invisible
 		// frames instead of having the text flash at full brightness.
@@ -132,12 +144,16 @@ public final class LyricRenderer {
 		// 1. Move from the camera to the text position.
 		poses.translate(position.x - cameraPos.x, position.y - cameraPos.y, position.z - cameraPos.z);
 
-		// 2. Face the camera.
+		// 2. Face the camera, then tilt around the line of sight (Z axis).
 		poses.rotate(camera.orientation);
+		if (tiltDegrees != 0) {
+			poses.rotateDegrees(Axis.ZP, tiltDegrees);
+		}
 
 		// 3. Shrink font pixels down to world size; negative Y flips the
 		//    text right side up.
-		poses.scale(TEXT_SCALE, -TEXT_SCALE, TEXT_SCALE);
+		float size = TEXT_SCALE * scale;
+		poses.scale(size, -size, size);
 
 		// 4. Submit the text, centered on xOffset: shift left by half its width
 		//    and up by half its height (both in font pixels).

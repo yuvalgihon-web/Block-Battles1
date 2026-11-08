@@ -9,6 +9,8 @@ import net.minecraft.world.phys.Vec3;
 
 /**
  * Shows the lyrics of the playing song in the world, in sync with the music.
+ * This class draws the LINE style itself and hands the SCATTER style to
+ * {@link ScatterAnimation}.
  *
  * Every frame we ask "what time is it in the song?" and draw what belongs to
  * that moment:
@@ -50,6 +52,11 @@ public final class SyncedLyricsDisplay {
 
 	/** Called by LyricRenderer every frame. */
 	static void render(LevelRenderContext context, Lyrics lyrics, long positionMs) {
+		if (LyricStyle.current == LyricStyle.SCATTER) {
+			ScatterAnimation.render(context, lyrics, positionMs);
+			shownLyrics = null; // so the LINE style starts fresh if you switch back
+			return;
+		}
 		if (lyrics == null) {
 			shownLyrics = null;
 			return;

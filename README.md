@@ -3,12 +3,15 @@
 A client-side Fabric mod that will play a song and show its lyrics floating in the
 world around you, synced to the music.
 
-**Current state: step 3.** Lyrics appear in the world in sync with the music, word by word.
+**Current state: step 4.** Lyrics appear in the world in sync with the music, word by word,
+scattered around you with animations (or as a simple line, if you prefer).
 
 | Command | What it does |
 | --- | --- |
 | `/lyrics test` | Shows one floating line 4 blocks in front of you, facing the camera, fading in and out. |
 | `/lyrics play <name>` | Plays `config/lyricmod/<name>.ogg` and shows the lyrics from `<name>.lrc` in sync. Press Tab to see the song names. |
+| `/lyrics style scatter` | (default) Words float around you: each pops in when sung, tilted, at its own distance/height/size; lines slowly orbit and drift up, then float away. |
+| `/lyrics style line` | Each line as a straight row of words in front of you. |
 | `/lyrics stop` | Stops the song. |
 | `/lyrics list` | Lists the songs in `config/lyricmod`. |
 | `/lyrics spotify` | Shows the lyrics of whatever the Spotify app is playing (lyrics from LRCLIB). See below for the one-time setup. |
@@ -17,8 +20,9 @@ world around you, synced to the music.
 The first time the game starts with the mod, it creates `.minecraft/config/lyricmod/` with a
 `README.txt` and an example song, so you can try `/lyrics play example` right away.
 The song's volume follows the **Jukebox/Note Blocks** slider in Music & Sounds.
-Each lyric line appears in front of you when it starts and stays at that spot; its words fade in
-one by one as they're sung, and the previous line fades out.
+Words appear one by one exactly when they're sung, and the previous line leaves when the next starts.
+In the default **scatter** style each line is spread over an arc around where you were looking when it
+started (still in reading order, right-to-left for Hebrew); the words travel with you as you walk.
 
 ### Spotify mode
 
@@ -112,6 +116,9 @@ To build a `.jar` for your normal Minecraft install: `./gradlew build`, then cop
 | `src/main/java/dev/lyricmod/SpotifyAuth.java` | Spotify login (Authorization Code with PKCE): a temporary local web server on `127.0.0.1:18742` receives the login, tokens are kept in `config/lyricmod/spotify.json` and refreshed automatically. |
 | `src/main/java/dev/lyricmod/SpotifyMode.java` | Asks Spotify what is playing about once a second, keeps counting the song time in between, and fetches lyrics when the song changes. |
 | `src/main/java/dev/lyricmod/Lrclib.java` | Downloads synced lyrics from lrclib.net (exact match first, then the search result closest in length) and caches them. |
+| `src/main/java/dev/lyricmod/ScatterAnimation.java` | The scatter style: chooses each word's spot (angle, distance, height, size, tilt) once per line, then animates pop-in, drift, orbit and leaving every frame. |
+| `src/main/java/dev/lyricmod/Easing.java` | Easing curves (`outCubic`, `inCubic`, `inOutSine`, `outBack`) that make motion start and stop smoothly. |
+| `src/main/java/dev/lyricmod/LyricStyle.java` | The available styles (`SCATTER`, `LINE`) and the current one. |
 | `src/main/java/dev/lyricmod/LyricTimeline.java` | Timing math only: which line is sung at a given time, when it ends, and when each of its words starts. |
 | `src/main/java/dev/lyricmod/SyncedLyricsDisplay.java` | Every frame, reads the song's playback time and draws the current line word by word (and the previous line fading out). |
 | `src/main/java/dev/lyricmod/LyricRenderer.java` | Hooks into world rendering every frame. Its `drawText` puts one piece of text in 3D: move to its position, rotate to face the camera, scale down, draw with the right transparency. |
@@ -122,5 +129,5 @@ To build a `.jar` for your normal Minecraft install: `./gradlew build`, then cop
 - **Step 2 (files):** done. Only `config/lyricmod/` is read; names with `/`, `\` or `..` and symbolic links are refused.
 - **Step 3 (sync):** done. Everything is computed from `SongPlayer.positionMs()` (the audio device's own playback time), so lyrics stay in sync through lag and pauses.
 - **Spotify mode:** done. `LyricRenderer` takes lyrics and time from `SpotifyMode` instead of `SongPlayer`; everything else is shared.
-- **Step 4 (animation):** `SyncedLyricsDisplay` will place words around the player (scatter, drift, orbit, tilt, scale) with easing curves instead of one straight line.
-- **Step 5 (config):** the constants at the top of `LyricRenderer` (`TEXT_SCALE`, `TEXT_COLOR`) and `LyricsCommand` (`TEST_DISTANCE`) become config values.
+- **Step 4 (animation):** done. The tuning numbers live as constants at the top of `ScatterAnimation`.
+- **Step 5 (config):** text color, size, distance, style and the scatter tuning numbers move into a config file.

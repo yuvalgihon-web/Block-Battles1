@@ -23,6 +23,7 @@ import net.minecraft.world.phys.Vec3;
  *   /lyrics record <name> make <name>.lrc by pressing a key at each line (see LyricRecorder)
  *   /lyrics spotify       show the lyrics of what Spotify is playing (see SpotifyMode)
  *   /lyrics spotify setup <client id> | login | logout
+ *   /lyrics style <scatter|line>   how lyrics are shown
  *
  * "Client-side" means the command runs only inside your own game. It is never
  * sent to the server, so it works in singleplayer and on any server, even one
@@ -73,6 +74,11 @@ public final class LyricsCommand {
 												.executes(context -> runSpotifyLogin(context.getSource())))
 										.then(ClientCommands.literal("logout")
 												.executes(context -> runSpotifyLogout(context.getSource()))))
+								.then(ClientCommands.literal("style")
+										.then(ClientCommands.literal("scatter")
+												.executes(context -> runStyle(context.getSource(), LyricStyle.SCATTER)))
+										.then(ClientCommands.literal("line")
+												.executes(context -> runStyle(context.getSource(), LyricStyle.LINE))))
 								.then(ClientCommands.literal("stop")
 										.executes(context -> runStop(context.getSource())))
 								.then(ClientCommands.literal("list")
@@ -198,6 +204,13 @@ public final class LyricsCommand {
 		SpotifyMode.stop();
 		SpotifyAuth.logout();
 		source.sendFeedback(Component.literal("Logged out of Spotify."));
+		return 1;
+	}
+
+	/** /lyrics style <scatter|line> */
+	private static int runStyle(FabricClientCommandSource source, LyricStyle style) {
+		LyricStyle.current = style;
+		source.sendFeedback(Component.literal("Lyric style: " + style.name().toLowerCase()));
 		return 1;
 	}
 
