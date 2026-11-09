@@ -94,6 +94,23 @@ public final class LyricRenderer {
 		}
 	}
 
+	/** The shadow color for a text color: same transparency, 1/4 of the brightness (like Minecraft's). */
+	private static int shadowColor(int argb) {
+		int alpha = argb >>> 24;
+		int red = (argb >> 16 & 0xFF) / 4;
+		int green = (argb >> 8 & 0xFF) / 4;
+		int blue = (argb & 0xFF) / 4;
+		return alpha << 24 | red << 16 | green << 8 | blue;
+	}
+
+	/** Height of one line of text, in font pixels. */
+	static final float LINE_HEIGHT_PIXELS = 9;
+
+	/** How many blocks one font pixel is, at size 1 (includes the "textSize" setting). */
+	static float blocksPerFontPixel() {
+		return TEXT_SCALE * LyricConfig.current.textSize;
+	}
+
 	/** Width of a piece of text, in font pixels. */
 	static float textWidth(String text) {
 		return Minecraft.getInstance().font.width(text);
@@ -201,17 +218,34 @@ public final class LyricRenderer {
 		//    and up by half its height (both in font pixels).
 		float x = xOffset - font.width(chars) / 2f;
 		float y = -font.lineHeight / 2f;
-		context.submitNodeCollector().submitText(
-				poses,
-				x, y,
-				chars,
-				LyricConfig.current.shadow,    // dark shadow behind the letters, easier to read
-				Font.DisplayMode.NORMAL,       // hidden behind blocks, like real objects
-				LightCoordsUtil.FULL_BRIGHT,   // glow even at night or in caves
-				argb,                          // color with alpha for the fade
-				0,                             // background color (0 = none)
-				0                              // outline color (0 = none)
-		);
+		boolean shadow = LyricConfig.current.shadow;
+
+		if (LyricConfig.current.alwaysVisible) {
+			// SEE_THROUGH: visible through blocks, like an overlay ("alwaysVisible" setting).
+			// Without the depth check, Minecraft's own shadow of each letter would be drawn
+			// on top of the letter before it. So we draw the shadow ourselves as a separate,
+			// darker copy 1 pixel down-right, and use "order" so ALL shadows are drawn first
+			// (order 0) and ALL letters after them (order 1).
+			if (shadow) {
+				context.submitNodeCollector().order(0).submitText(poses, x + 1, y + 1, chars, false,
+						Font.DisplayMode.SEE_THROUGH, LightCoordsUtil.FULL_BRIGHT, shadowColor(argb), 0, 0);
+			}
+			context.submitNodeCollector().order(1).submitText(poses, x, y, chars, false,
+					Font.DisplayMode.SEE_THROUGH, LightCoordsUtil.FULL_BRIGHT, argb, 0, 0);
+		} else {
+			// NORMAL: hidden behind blocks, like real objects. Minecraft draws the shadow.
+			context.submitNodeCollector().submitText(
+					poses,
+					x, y,
+					chars,
+					shadow,                        // dark shadow behind the letters, easier to read
+					Font.DisplayMode.NORMAL,
+					LightCoordsUtil.FULL_BRIGHT,   // glow even at night or in caves
+					argb,                          // color with alpha for the fade
+					0,                             // background color (0 = none)
+					0                              // outline color (0 = none)
+			);
+		}
 
 		poses.popPose();
 	}

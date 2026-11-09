@@ -31,22 +31,33 @@ public final class ScatterAnimation {
 
 	// Most numbers come from the "scatter" part of config.json (see LyricConfig.ScatterSettings).
 
-	/** Degrees of arc per word, and the smallest arc a line uses (the largest is "spreadDegrees"). */
-	private static final float ARC_PER_WORD = 13f;
-	private static final float MIN_ARC = 20f;
-	/** Random wiggle added to each word's angle, in degrees. */
-	private static final float ANGLE_JITTER = 4f;
+	/** Empty space between two words, in degrees (seen from the player). */
+	private static final float WORD_GAP_DEGREES = 3f;
+	/** Very long lines shrink until all their rows fit in about this many degrees, top to bottom. */
+	private static final float MAX_LINE_HEIGHT_DEGREES = 30f;
+	/** Random sideways wiggle of a word, in degrees (smaller than the gap, so words never touch). */
+	private static final float ANGLE_JITTER = 0.6f;
 	/** Extra rise while leaving, in blocks. */
 	private static final float LEAVE_RISE = 0.6f;
 	/** For very long lines, center the orbit on this much time only. */
 	private static final long MAX_ORBIT_MS = 8000;
 
-	/** Where and how one word of a line is placed (chosen once per line). */
-	private record WordSpot(float angleOffset, float distance, float height, float size, float tilt) {
+	/**
+	 * Where and how one word of a line is placed (chosen once per line).
+	 *
+	 * @param angleOffset   degrees left (-) or right (+) of the line's center direction
+	 * @param angularWidth  how wide the word looks from the player, in degrees
+	 * @param elevation     degrees above (+) or below (-) eye level, as seen from the player
+	 * @param angularHeight how tall the word looks from the player, in degrees
+	 * @param row           0 = top row (long lines are wrapped into several rows)
+	 * @param height        blocks above eye level (= what "elevation" means at this word's distance)
+	 */
+	public record WordSpot(float angleOffset, float angularWidth, float elevation, float angularHeight, int row,
+			float distance, float height, float size, float tilt) {
 	}
 
 	/** One line's layout: the direction it was centered on, and its words' spots. */
-	private record LineLayout(float centerYaw, List<WordSpot> spots) {
+	public record LineLayout(float centerYaw, List<WordSpot> spots) {
 	}
 
 	private static Lyrics shownLyrics;
@@ -138,8 +149,10 @@ public final class ScatterAnimation {
 			float pop = settings.popIn ? Easing.lerp(0.5f, 1f, Easing.outBack(appear)) : 1f;
 			float scale = spot.size() * pop * (1 - 0.3f * leave);
 
+			// The drift is counted from the LINE's start, so all its words rise
+			// together and never drift into each other.
 			float height = spot.height()
-					+ settings.driftUpPerSecond * age / 1000f
+					+ settings.driftUpPerSecond * Math.max(0, positionMs - lineStart) / 1000f
 					+ LEAVE_RISE * leave;
 			double angle = Math.toRadians(layout.centerYaw() + spot.angleOffset() + orbit);
 			// Minecraft's yaw: 0 = looking toward +Z (south), 90 = toward -X (west).
@@ -157,32 +170,136 @@ public final class ScatterAnimation {
 	/**
 	 * Chooses a spot for every word of a line. The random numbers come from a
 	 * fixed "seed" per line, so the same song always gets the same layout.
+	 *
+	 * To avoid overlapping words, we measure how wide each word will look from
+	 * the player (in degrees) and put words side by side with a small gap.
+	 * If a line doesn't fit in "spreadDegrees", it is wrapped into more rows,
+	 * like text wrapping in a document: first row on top.
 	 */
-	private static LineLayout createLayout(Lyrics lyrics, int line, PreparedLine prepared, float playerYaw) {
+	public static LineLayout createLayout(Lyrics lyrics, int line, PreparedLine prepared, float playerYaw) {
 		LyricConfig.ScatterSettings settings = LyricConfig.current.scatter;
 		Random random = new Random(lyrics.title().hashCode() * 31L + line);
 		int count = prepared.words.size();
-		float arc = Math.min(Math.max(count * ARC_PER_WORD, MIN_ARC), settings.spreadDegrees);
 
-		// Reading order on screen: left to right (Hebrew lines: the first word on the right).
-		int[] leftToRight = prepared.leftToRight;
-		float[] angleOffsets = new float[count];
-		for (int visual = 0; visual < count; visual++) {
-			float t = count == 1 ? 0.5f : (float) visual / (count - 1);
-			// Increasing yaw turns to the RIGHT, so left-most words get negative offsets.
-			angleOffsets[leftToRight[visual]] = Easing.lerp(-arc / 2, arc / 2, t);
+		// Everything is measured in ANGLES as seen from the player's eyes, because
+		// that's what the screen shows: a near word looks bigger and higher than a far
+		// word at the same height, so measuring in blocks would let rows cross.
+
+		// 1. Random size, distance and tilt for each word.
+		float[] size = new float[count];
+		float[] distance = new float[count];
+		float[] tilt = new float[count];
+		for (int i = 0; i < count; i++) {
+			size[i] = settings.wordSize + randomPlusMinus(random) * settings.sizeVariation;
+			distance[i] = settings.distance + randomPlusMinus(random) * settings.distanceVariation;
+			tilt[i] = randomPlusMinus(random) * settings.tiltDegrees;
+		}
+
+		// 2. Measure the words and wrap them into rows that fit in "spreadDegrees".
+		//    If a very long line needs too many rows to fit on screen, make all its
+		//    words a bit smaller and try again.
+		float[] angularWidth = new float[count];
+		float[] angularHeight = new float[count];
+		float tallest = 0; // the tallest word, in degrees
+		List<List<Integer>> rows = List.of();
+		for (int attempt = 0; attempt < 8; attempt++) {
+			tallest = measure(prepared, size, distance, tilt, angularWidth, angularHeight);
+			rows = wrapIntoRows(angularWidth, settings.spreadDegrees);
+			if (rows.size() * tallest * 1.2f <= MAX_LINE_HEIGHT_DEGREES) {
+				break;
+			}
+			for (int i = 0; i < count; i++) {
+				size[i] *= 0.85f;
+			}
+		}
+
+		// 3. Up and down: with one row, words may scatter freely ("heightVariation").
+		//    With more rows they wiggle less, and rows are far enough apart not to touch.
+		float centerElevation = (float) Math.toDegrees(Math.atan2(settings.height, settings.distance));
+		float freeJitter = (float) Math.toDegrees(Math.atan2(settings.heightVariation, settings.distance));
+		float elevationJitter = rows.size() == 1 ? freeJitter : Math.min(freeJitter, tallest * 0.2f);
+		float rowGap = tallest * 1.1f + 2 * elevationJitter;
+
+		// 4. Place each row's words from left to right, centered on the line's direction.
+		float[] angleOffset = new float[count];
+		float[] elevation = new float[count];
+		float[] height = new float[count];
+		int[] rowOf = new int[count];
+		for (int r = 0; r < rows.size(); r++) {
+			List<Integer> words = rows.get(r);
+			// Reading order on screen, for this row only (Hebrew: first word on the right).
+			List<String> texts = words.stream().map(prepared.texts::get).toList();
+			int[] leftToRight = BidiText.visualWordOrder(texts, prepared.rightToLeft);
+
+			float total = -WORD_GAP_DEGREES;
+			for (int i : words) {
+				total += angularWidth[i] + WORD_GAP_DEGREES;
+			}
+			float rowElevation = centerElevation + ((rows.size() - 1) / 2f - r) * rowGap; // row 0 on top
+			// Increasing yaw turns to the RIGHT, so we go from -total/2 (left) to +total/2 (right).
+			float left = -total / 2;
+			for (int visual : leftToRight) {
+				int i = words.get(visual);
+				angleOffset[i] = left + angularWidth[i] / 2 + randomPlusMinus(random) * ANGLE_JITTER;
+				elevation[i] = rowElevation + randomPlusMinus(random) * elevationJitter;
+				// Turn the angle back into blocks above eye level, at this word's distance.
+				height[i] = (float) (Math.tan(Math.toRadians(elevation[i])) * distance[i]);
+				rowOf[i] = r;
+				left += angularWidth[i] + WORD_GAP_DEGREES;
+			}
 		}
 
 		List<WordSpot> spots = new ArrayList<>();
 		for (int i = 0; i < count; i++) {
-			spots.add(new WordSpot(
-					angleOffsets[i] + randomPlusMinus(random) * ANGLE_JITTER,
-					settings.distance + randomPlusMinus(random) * settings.distanceVariation,
-					settings.height + randomPlusMinus(random) * settings.heightVariation,
-					settings.wordSize + randomPlusMinus(random) * settings.sizeVariation,
-					randomPlusMinus(random) * settings.tiltDegrees));
+			spots.add(new WordSpot(angleOffset[i], angularWidth[i], elevation[i], angularHeight[i], rowOf[i],
+					distance[i], height[i], size[i], tilt[i]));
 		}
 		return new LineLayout(playerYaw, spots);
+	}
+
+	/**
+	 * Works out how wide and tall each word looks from the player, in degrees.
+	 * Returns the tallest.
+	 */
+	private static float measure(PreparedLine prepared, float[] size, float[] distance, float[] tilt,
+			float[] angularWidth, float[] angularHeight) {
+		float blocksPerPixel = LyricRenderer.blocksPerFontPixel();
+		float tallest = 0;
+		for (int i = 0; i < size.length; i++) {
+			float widthBlocks = prepared.widths[i] * blocksPerPixel * size[i];
+			float heightBlocks = LyricRenderer.LINE_HEIGHT_PIXELS * blocksPerPixel * size[i];
+			// A tilted word takes more room: its box turned a little.
+			double t = Math.toRadians(Math.abs(tilt[i]));
+			float tiltedWidth = (float) (widthBlocks * Math.cos(t) + heightBlocks * Math.sin(t));
+			float tiltedHeight = (float) (heightBlocks * Math.cos(t) + widthBlocks * Math.sin(t));
+			angularWidth[i] = degreesSeen(tiltedWidth, distance[i]);
+			angularHeight[i] = degreesSeen(tiltedHeight, distance[i]);
+			tallest = Math.max(tallest, angularHeight[i]);
+		}
+		return tallest;
+	}
+
+	/** Puts words (in reading order) into rows no wider than {@code maxDegrees}, like text wrapping. */
+	private static List<List<Integer>> wrapIntoRows(float[] angularWidth, float maxDegrees) {
+		List<List<Integer>> rows = new ArrayList<>();
+		List<Integer> row = new ArrayList<>();
+		float rowWidth = 0;
+		for (int i = 0; i < angularWidth.length; i++) {
+			if (!row.isEmpty() && rowWidth + WORD_GAP_DEGREES + angularWidth[i] > maxDegrees) {
+				rows.add(row);
+				row = new ArrayList<>();
+				rowWidth = 0;
+			}
+			rowWidth += (row.isEmpty() ? 0 : WORD_GAP_DEGREES) + angularWidth[i];
+			row.add(i);
+		}
+		rows.add(row);
+		return rows;
+	}
+
+	/** How many degrees something {@code size} blocks big looks, seen from {@code distance} blocks away. */
+	private static float degreesSeen(float size, float distance) {
+		return (float) Math.toDegrees(2 * Math.atan(size / 2 / distance));
 	}
 
 	/** A random number between -1 and +1. */

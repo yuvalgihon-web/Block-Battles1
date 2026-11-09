@@ -51,6 +51,7 @@ public class LyricTestCommandGameTest implements FabricClientGameTest {
 			testSpotifyParts(context);
 			testScatter(context);
 			testConfig(context);
+			testNoOverlapAndWalls(context, world);
 		}
 	}
 
@@ -360,7 +361,7 @@ public class LyricTestCommandGameTest implements FabricClientGameTest {
 			check(problems.size() == 3, "three problems reported: " + problems);
 			check(config.textSize == 5f && config.gradientRgb == -1 && config.colorRgb == 0xFF8800, "fixed values");
 			check(config.smoothFont && config.font.equals("smooth"), "unknown font -> smooth");
-			check(config.scatter.tiltDegrees == 0 && config.scatter.distance == 5.5f, "missing values use defaults");
+			check(config.scatter.tiltDegrees == 0 && config.scatter.distance == 4.5f, "missing values use defaults");
 			check(Files.readString(file).contains("\"orbitDegreesPerSecond\""), "missing settings written back");
 
 			// A broken file: previous settings stay, and the file is NOT overwritten.
@@ -385,6 +386,82 @@ public class LyricTestCommandGameTest implements FabricClientGameTest {
 		context.waitFor(client -> SongPlayer.isPlaying(), 100);
 		waitForSongTime(context, 11500);
 		context.takeScreenshot("step5-purple-gradient");
+		command(context, "lyrics stop");
+	}
+
+	/** Long lines wrap into rows without overlapping; lyrics show through a wall; old configs upgrade. */
+	private void testNoOverlapAndWalls(ClientGameTestContext context, TestSingleplayerContext world) {
+		java.nio.file.Path file = dev.lyricmod.LyricConfig.file();
+		try {
+			// Old config files: untouched old defaults are upgraded, changed values kept.
+			Files.writeString(file, "{ \"scatter\": { \"distance\": 5.5, \"distanceVariation\": 1.0, \"wordSize\": 2.0 } }");
+			context.runOnClient(client -> dev.lyricmod.LyricConfig.load());
+			check(dev.lyricmod.LyricConfig.current.scatter.distance == 4.5f, "old default distance upgraded");
+			check(dev.lyricmod.LyricConfig.current.scatter.wordSize == 2.0f, "changed word size kept");
+			Files.writeString(file, "{ \"scatter\": { \"distance\": 6.0 } }");
+			context.runOnClient(client -> dev.lyricmod.LyricConfig.load());
+			check(dev.lyricmod.LyricConfig.current.scatter.distance == 6.0f, "changed distance kept");
+			Files.delete(file);
+			context.runOnClient(client -> dev.lyricmod.LyricConfig.load()); // back to defaults
+			check(dev.lyricmod.LyricConfig.current.alwaysVisible, "alwaysVisible by default");
+
+			// Every line of a real song: words in a row don't touch, rows don't touch.
+			String longLine = "[00:01.00]This is a very long line of lyrics that would never fit on a single row "
+					+ "of the screen no matter how hard it tried to squeeze itself in there\n[00:12.00]\n";
+			Files.writeString(LyricFiles.folder().resolve("long.lrc"), longLine);
+			Files.copy(LyricFiles.folder().resolve("example.ogg"), LyricFiles.folder().resolve("long.ogg"));
+			for (String song : new String[] {"queen", "long", "hebrew"}) {
+				Lyrics lyrics = LyricFiles.loadLyrics(song);
+				context.runOnClient(client -> {
+					for (int line = 0; line < lyrics.lines().size(); line++) {
+						dev.lyricmod.PreparedLine prepared = dev.lyricmod.PreparedLine.get(lyrics, line);
+						var spots = dev.lyricmod.ScatterAnimation.createLayout(lyrics, line, prepared, 0).spots();
+						for (int a = 0; a < spots.size(); a++) {
+							for (int b = a + 1; b < spots.size(); b++) {
+								var p = spots.get(a);
+								var q = spots.get(b);
+								if (p.row() == q.row()) {
+									float apart = Math.abs(p.angleOffset() - q.angleOffset());
+									check(apart >= (p.angularWidth() + q.angularWidth()) / 2,
+											song + " line " + line + ": words " + a + " and " + b + " overlap");
+								} else {
+									// Different rows: compare how high they LOOK (angles), not blocks.
+									check(Math.abs(p.elevation() - q.elevation())
+													>= (p.angularHeight() + q.angularHeight()) / 2,
+											song + " line " + line + ": rows overlap at words " + a + "," + b);
+									double seen = Math.toDegrees(Math.atan2(p.height(), p.distance()));
+									check(Math.abs(seen - p.elevation()) < 0.01, "height matches elevation");
+								}
+							}
+						}
+					}
+				});
+			}
+			Lyrics longLyrics = LyricFiles.loadLyrics("long");
+			int rows = context.computeOnClient(client -> dev.lyricmod.ScatterAnimation.createLayout(longLyrics, 0,
+					dev.lyricmod.PreparedLine.get(longLyrics, 0), 0).spots().stream()
+					.mapToInt(dev.lyricmod.ScatterAnimation.WordSpot::row).max().orElse(0) + 1);
+			check(rows >= 2, "the long line should wrap into rows, got " + rows);
+		} catch (IOException e) {
+			throw new AssertionError(e);
+		}
+
+		command(context, "lyrics style scatter");
+		command(context, "lyrics play long");
+		context.waitFor(client -> SongPlayer.isPlaying(), 100);
+		waitForSongTime(context, 7000);
+		context.takeScreenshot("fix-long-line-rows");
+		command(context, "lyrics stop");
+
+		// A stone wall 2 blocks in front of the player (who looks toward +Z).
+		net.minecraft.core.BlockPos feet = context.computeOnClient(client -> client.player.blockPosition());
+		world.getServer().runCommand(String.format("fill %d %d %d %d %d %d minecraft:stone",
+				feet.getX() - 6, feet.getY(), feet.getZ() + 2, feet.getX() + 6, feet.getY() + 6, feet.getZ() + 2));
+		context.waitTicks(10);
+		command(context, "lyrics play queen");
+		context.waitFor(client -> SongPlayer.isPlaying(), 100);
+		waitForSongTime(context, 11500);
+		context.takeScreenshot("fix-wall-in-front");
 		command(context, "lyrics stop");
 	}
 

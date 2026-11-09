@@ -25,7 +25,8 @@ The first time the game starts with the mod, it creates `.minecraft/config/lyric
 The song's volume follows the **Jukebox/Note Blocks** slider in Music & Sounds.
 Words appear one by one exactly when they're sung, and the previous line leaves when the next starts.
 In the default **scatter** style each line is spread over an arc around where you were looking when it
-started (still in reading order, right-to-left for Hebrew); the words travel with you as you walk.
+started (still in reading order, right-to-left for Hebrew); words are measured so they never overlap,
+long lines wrap into rows, and the words travel with you as you walk. Lyrics show through blocks.
 
 ### Settings (config.json)
 
@@ -42,14 +43,15 @@ is not overwritten until you fix it.
 | `font` | `"smooth"` | `"smooth"` (bold italic font: Poppins, with Secular One for Hebrew) or `"minecraft"` (the normal blocky font). |
 | `color` | `"#FFFFFF"` | Text color (`#RRGGBB`). |
 | `gradientColor` | `"#D7B8FF"` | Each line fades from `color` (first word) to this color (last word). `""` = off. |
+| `alwaysVisible` | `true` | Lyrics show through blocks (like an overlay). `false` = blocks in front hide them. |
 | `shadow` | `true` | Dark shadow behind the letters. |
 | `textSize` | `1.0` | Size multiplier for all lyrics (0.2 to 5). |
 | `line.distance` / `line.height` | `4.0` / `0.8` | Where lines appear in the line style, in blocks. |
 | `line.wordFadeInMs` / `line.lineFadeOutMs` | `250` / `400` | Fade times in the line style. |
-| `scatter.distance` ± `distanceVariation` | `5.5` ± `1.0` | How far words are from you, in blocks. |
+| `scatter.distance` ± `distanceVariation` | `4.5` ± `0.8` | How far words are from you, in blocks. |
 | `scatter.height` ± `heightVariation` | `0.7` ± `0.9` | How high above your eyes, in blocks. |
-| `scatter.wordSize` ± `sizeVariation` | `1.8` ± `0.5` | Word size. |
-| `scatter.spreadDegrees` | `70` | Widest angle one line is spread over. |
+| `scatter.wordSize` ± `sizeVariation` | `1.5` ± `0.5` | Word size. |
+| `scatter.spreadDegrees` | `70` | Widest angle one row of words may cover; longer lines wrap into more rows (very long lines shrink to fit). |
 | `scatter.tiltDegrees` | `12` | Largest tilt per word (0 = straight). |
 | `scatter.orbitDegreesPerSecond` | `3` | Orbit speed around you (0 = off, negative = other way). |
 | `scatter.driftUpPerSecond` | `0.08` | Upward drift (0 = off). |

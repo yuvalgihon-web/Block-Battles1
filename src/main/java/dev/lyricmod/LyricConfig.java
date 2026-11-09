@@ -29,6 +29,9 @@ public final class LyricConfig {
 
 	// ===== Settings (these names are the names in config.json) =====
 
+	/** Which version of the mod wrote this file; used to update old default values. */
+	public int configVersion = 0;
+
 	/** "scatter" (words float around you) or "line" (a straight row in front of you). */
 	public String style = "scatter";
 
@@ -43,6 +46,9 @@ public final class LyricConfig {
 
 	/** "smooth" (the mod's bold italic font) or "minecraft" (the normal blocky font). */
 	public String font = "smooth";
+
+	/** true = lyrics show through blocks (like an overlay); false = blocks in front hide them. */
+	public boolean alwaysVisible = true;
 
 	/** Dark shadow behind the letters, makes them easier to read. */
 	public boolean shadow = true;
@@ -69,15 +75,15 @@ public final class LyricConfig {
 
 	public static final class ScatterSettings {
 		/** Average distance of words from you, and how much it varies (+/-), in blocks. */
-		public float distance = 5.5f;
-		public float distanceVariation = 1.0f;
+		public float distance = 4.5f;
+		public float distanceVariation = 0.8f;
 		/** Average height above your eyes, and how much it varies (+/-), in blocks. */
 		public float height = 0.7f;
 		public float heightVariation = 0.9f;
 		/** Average word size, and how much it varies (+/-). */
-		public float wordSize = 1.8f;
+		public float wordSize = 1.5f;
 		public float sizeVariation = 0.5f;
-		/** Largest angle (left to right) one line is spread over, in degrees. */
+		/** Widest angle (left to right) one row of words may cover, in degrees; longer lines wrap into rows. */
 		public float spreadDegrees = 70f;
 		/** Largest tilt of a word to either side, in degrees (0 = no tilt). */
 		public float tiltDegrees = 12f;
@@ -103,6 +109,9 @@ public final class LyricConfig {
 	public transient int gradientRgb = -1; // -1 = no gradient
 
 	// ===== Loading and saving =====
+
+	/** The version written into new files (increase it when default values change). */
+	private static final int CURRENT_VERSION = 2;
 
 	/** The settings in use right now. */
 	public static LyricConfig current = new LyricConfig();
@@ -131,6 +140,7 @@ public final class LyricConfig {
 		Path file = file();
 		if (!Files.exists(file)) {
 			current = new LyricConfig();
+			current.configVersion = CURRENT_VERSION;
 			current.validate(messages);
 			fileIsBroken = false;
 			save();
@@ -142,6 +152,7 @@ public final class LyricConfig {
 			if (loaded == null) {
 				throw new JsonParseException("the file is empty");
 			}
+			loaded.upgradeOldDefaults();
 			loaded.validate(messages);
 			current = loaded;
 			fileIsBroken = false;
@@ -170,6 +181,25 @@ public final class LyricConfig {
 			LyricModClient.LOGGER.warn("Could not save config.json", e);
 			return false;
 		}
+	}
+
+	/**
+	 * Files written by older versions contain the OLD default values. If the
+	 * player never changed a value, we switch it to the new default; values the
+	 * player changed are kept.
+	 */
+	private void upgradeOldDefaults() {
+		if (configVersion < 2 && scatter != null) {
+			// Version 2: words closer (they were hidden by nearby blocks) and a bit smaller.
+			if (scatter.distance == 5.5f && scatter.distanceVariation == 1.0f) {
+				scatter.distance = 4.5f;
+				scatter.distanceVariation = 0.8f;
+			}
+			if (scatter.wordSize == 1.8f) {
+				scatter.wordSize = 1.5f;
+			}
+		}
+		configVersion = CURRENT_VERSION;
 	}
 
 	/** Puts every value in a safe range and works out the "transient" values. */
